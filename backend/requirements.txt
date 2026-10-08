@@ -10,3 +10,8 @@ spacy
 scikit-learn
 sentence-transformers
 torch
+sqlalchemy
+psycopg2-binary
+pyjwt
+openpyxl
+reportlab

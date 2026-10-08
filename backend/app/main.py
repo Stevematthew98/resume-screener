@@ -1,24 +1,49 @@
-"""Resume Screener backend — FastAPI service."""
+"""Resume Screener backend — FastAPI service.
+
+Phase 2: demo auth (JWT), persistent database (Railway Postgres, SQLite
+fallback), recruiter dashboard, saved job profiles, screening history,
+CSV/Excel/PDF exports. The NLP pipeline itself (pipeline.py / screening.py)
+is untouched — Phase 2 wraps it with persistence and management.
+"""
 
 import json
 import os
 import uuid
-from typing import Optional
+from typing import Any, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
-from .pipeline import STAGE_ORDER, analyze_resume, ensure_models
-from .screening import (
-    build_candidate,
-    normalize_job,
-    ranking_row,
-    screen_one_resume,
+from .auth import (
+    DEMO_EMAIL,
+    DEMO_PASSWORD,
+    create_token,
+    get_current_user,
+    hash_password,
+    seed_demo_user,
+    user_public,
+    verify_password,
 )
+from .db import (
+    Candidate,
+    Feedback,
+    Job,
+    ScreeningSession,
+    StatusHistory,
+    User,
+    candidate_public,
+    candidate_row,
+    get_session,
+    init_db,
+    session_to_dict,
+)
+from .exports import build_csv, build_pdf, build_xlsx
+from .pipeline import STAGE_ORDER, analyze_resume, ensure_models
+from .screening import normalize_job, ranking_row, screen_one_resume
 
-app = FastAPI(title="Resume Screener API", version="1.0.0")
+app = FastAPI(title="Resume Screener API", version="2.0.0")
 
 _frontend = os.getenv("FRONTEND_URL", "*")
 _origins = [o.strip() for o in _frontend.split(",") if o.strip()] if _frontend != "*" else ["*"]
@@ -29,14 +54,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# In-memory feedback store. LIMITATION: lost on every redeploy/restart;
-# use a durable database before any real use.
-_feedback_store: dict[str, list[str]] = {}
-
-# In-memory candidate screening store: resume_id -> {status, notes,
-# reject_reason, filename, updated_at}. LIMITATION: lost on redeploy.
-_candidate_store: dict[str, dict] = {}
 
 CANDIDATE_STATUSES = ("New", "Screened", "Shortlisted", "Under Review", "Rejected")
 
@@ -53,16 +70,95 @@ class CandidateStatusIn(BaseModel):
     reject_reason: str = ""
 
 
+class SignupIn(BaseModel):
+    email: str
+    password: str
+    name: str = ""
+
+
+class LoginIn(BaseModel):
+    email: str
+    password: str
+
+
+class JobIn(BaseModel):
+    title: str
+    company: str = ""
+    jd_text: str = ""
+    required_skills: Any = ""
+    preferred_skills: Any = ""
+    min_experience_years: float = 0.0
+    education_requirements: str = ""
+
+
 @app.on_event("startup")
 def _startup():
     # Models are pre-downloaded into the image at build time; this just loads them.
     ensure_models()
+    init_db()
+    seed_demo_user()
 
 
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
 
+
+# ----------------------------------------------------------------------------
+# Demo auth
+# ----------------------------------------------------------------------------
+
+@app.post("/api/auth/signup")
+def signup(item: SignupIn):
+    email = (item.email or "").strip().lower()
+    if "@" not in email or "." not in email:
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
+    if len(item.password or "") < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+    db = get_session()
+    try:
+        if db.query(User).filter(User.email == email).first():
+            raise HTTPException(status_code=400, detail="An account with this email already exists.")
+        user = User(email=email, name=(item.name or "").strip() or email.split("@")[0],
+                    password_hash=hash_password(item.password))
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return {"user": user_public(user), "access_token": create_token(user.id),
+                "token_type": "bearer"}
+    finally:
+        db.close()
+
+
+@app.post("/api/auth/login")
+def login(item: LoginIn):
+    email = (item.email or "").strip().lower()
+    db = get_session()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+    finally:
+        db.close()
+    if user is None or not verify_password(item.password or "", user.password_hash):
+        raise HTTPException(status_code=401, detail="Incorrect email or password.")
+    return {"user": user_public(user), "access_token": create_token(user.id),
+            "token_type": "bearer"}
+
+
+@app.get("/api/auth/me")
+def me(user: User = Depends(get_current_user)):
+    return user_public(user)
+
+
+@app.get("/api/auth/demo")
+def demo_info():
+    """Demo credentials shown on the login page."""
+    return {"email": DEMO_EMAIL, "password": DEMO_PASSWORD,
+            "note": "Demo auth for trying the product — not for real accounts."}
+
+
+# ----------------------------------------------------------------------------
+# Legacy single-resume analysis (unchanged public endpoint)
+# ----------------------------------------------------------------------------
 
 @app.post("/api/analyze")
 async def analyze(
@@ -88,22 +184,105 @@ async def analyze(
 def feedback(item: FeedbackIn):
     if item.verdict not in ("good_fit", "bad_fit"):
         raise HTTPException(status_code=400, detail="verdict must be 'good_fit' or 'bad_fit'.")
-    _feedback_store.setdefault(item.analysis_id, []).append(item.verdict)
-    return {
-        "analysis_id": item.analysis_id,
-        "verdicts_recorded": len(_feedback_store[item.analysis_id]),
-        "note": "Feedback is stored in memory and is lost on redeploy.",
-    }
+    db = get_session()
+    try:
+        db.add(Feedback(analysis_id=item.analysis_id, verdict=item.verdict))
+        db.commit()
+        count = db.query(Feedback).filter(Feedback.analysis_id == item.analysis_id).count()
+    finally:
+        db.close()
+    return {"analysis_id": item.analysis_id, "verdicts_recorded": count}
 
 
 @app.get("/api/feedback/stats")
 def feedback_stats():
-    total = sum(len(v) for v in _feedback_store.values())
-    return {"analyses_with_feedback": len(_feedback_store), "total_verdicts": total}
+    db = get_session()
+    try:
+        total = db.query(Feedback).count()
+        analyses = db.query(Feedback.analysis_id).distinct().count()
+    finally:
+        db.close()
+    return {"analyses_with_feedback": analyses, "total_verdicts": total}
 
 
 # ----------------------------------------------------------------------------
-# Batch screening (recruiter flow): POST /api/screen/stream (SSE)
+# Job profiles
+# ----------------------------------------------------------------------------
+
+def _job_public(job: Job, sessions_count: int = 0) -> dict:
+    return {
+        "id": job.id,
+        "title": job.title,
+        "company": job.company,
+        "jd_text": job.jd_text,
+        "required_skills": job.required_skills or [],
+        "preferred_skills": job.preferred_skills or [],
+        "min_experience_years": job.min_experience_years,
+        "education_requirements": job.education_requirements,
+        "created_at": job.created_at.isoformat() if job.created_at else "",
+        "sessions_count": sessions_count,
+    }
+
+
+@app.post("/api/jobs")
+def create_job(item: JobIn, user: User = Depends(get_current_user)):
+    if not (item.title or "").strip():
+        raise HTTPException(status_code=400, detail="Job title is required.")
+    norm = normalize_job(item.dict())
+    db = get_session()
+    try:
+        job = Job(user_id=user.id, **norm)
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+        return _job_public(job)
+    finally:
+        db.close()
+
+
+@app.get("/api/jobs")
+def list_jobs(user: User = Depends(get_current_user)):
+    db = get_session()
+    try:
+        jobs = db.query(Job).filter(Job.user_id == user.id).order_by(Job.created_at.desc()).all()
+        out = []
+        for j in jobs:
+            n = db.query(ScreeningSession).filter(
+                ScreeningSession.job_id == j.id, ScreeningSession.user_id == user.id).count()
+            out.append(_job_public(j, n))
+        return out
+    finally:
+        db.close()
+
+
+@app.get("/api/jobs/{job_id}")
+def get_job(job_id: int, user: User = Depends(get_current_user)):
+    db = get_session()
+    try:
+        job = db.query(Job).filter(Job.id == job_id, Job.user_id == user.id).first()
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found.")
+        return _job_public(job)
+    finally:
+        db.close()
+
+
+@app.delete("/api/jobs/{job_id}")
+def delete_job(job_id: int, user: User = Depends(get_current_user)):
+    db = get_session()
+    try:
+        job = db.query(Job).filter(Job.id == job_id, Job.user_id == user.id).first()
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found.")
+        db.delete(job)
+        db.commit()
+        return {"deleted": job_id}
+    finally:
+        db.close()
+
+
+# ----------------------------------------------------------------------------
+# Batch screening with live NLP pipeline streaming + persistence
 # ----------------------------------------------------------------------------
 
 MAX_BATCH_FILES = 20
@@ -127,13 +306,53 @@ def _sse(obj: dict) -> str:
     return "data: " + json.dumps(obj, default=str) + "\n\n"
 
 
-@app.post("/api/screen/stream")
-async def screen_stream(resumes: list[UploadFile] = File(...), job: str = Form(...)):
-    """Screen a batch of resumes with live per-resume stage events (SSE).
+def _persist_candidate(db, session_id: int, resume_id: str, filename: str, payload: dict) -> None:
+    personal = payload.get("personal", {}) or {}
+    skills_comp = (payload.get("components", {}) or {}).get("skills", {}) or {}
+    cand = Candidate(
+        session_id=session_id,
+        resume_id=resume_id,
+        filename=filename,
+        name=personal.get("name", "") or "",
+        email=personal.get("email", "") or "",
+        phone=personal.get("phone", "") or "",
+        score=payload.get("score", 0.0),
+        band=payload.get("band", ""),
+        experience_years=payload.get("experience_years", 0.0),
+        degrees=payload.get("degrees", []),
+        job_titles=payload.get("job_titles", []),
+        matched_skills=payload.get("matched_skills", []),
+        missing_skills=payload.get("missing_skills", []),
+        preferred_matched=skills_comp.get("preferred_matched", []),
+        components=payload.get("components", {}),
+        explanation=payload.get("explanation", []),
+        sections=payload.get("sections", {}),
+        meets_experience_requirement=payload.get("meets_experience_requirement", False),
+        fairness_note=payload.get("fairness_note", ""),
+        profile_json=payload,
+        status="Screened",  # every candidate starts Screened; scoring never auto-rejects
+        notes="",
+        reject_reason="",
+    )
+    db.add(cand)
+    db.flush()
+    db.add(StatusHistory(candidate_id=cand.id, old_status="", new_status="Screened"))
+    db.commit()
 
-    Form fields: resumes (1..20 files), job (JSON: title, company, jd_text,
-    required_skills, preferred_skills, min_experience_years, education_requirements).
-    Event types: job_ready, resume_start, stage, resume_done, batch_complete, error.
+
+@app.post("/api/screen/stream")
+async def screen_stream(
+    resumes: list[UploadFile] = File(...),
+    job: str = Form(...),
+    job_id: Optional[str] = Form(None),
+    user: User = Depends(get_current_user),
+):
+    """Screen a batch of resumes with live per-resume NLP stage events (SSE).
+
+    Form fields: resumes (1..20 files), job (JSON job spec), job_id (optional,
+    links this run to a saved job profile). Requires auth.
+    Event types: job_ready, resume_start, stage, resume_done, resume_error,
+    batch_complete.
     """
     try:
         job_spec = normalize_job(json.loads(job))
@@ -146,6 +365,32 @@ async def screen_stream(resumes: list[UploadFile] = File(...), job: str = Form(.
     if len(resumes) > MAX_BATCH_FILES:
         raise HTTPException(status_code=400, detail=f"Maximum {MAX_BATCH_FILES} resumes per batch.")
 
+    db = get_session()
+    linked_job_id = None
+    if job_id:
+        try:
+            jid = int(job_id)
+        except (TypeError, ValueError):
+            jid = None
+        if jid:
+            exists = db.query(Job).filter(Job.id == jid, Job.user_id == user.id).first()
+            if exists:
+                linked_job_id = jid
+    session = ScreeningSession(
+        user_id=user.id,
+        job_id=linked_job_id,
+        job_title=job_spec["title"],
+        job_company=job_spec["company"],
+        job_snapshot=job_spec,
+        total_resumes=len(resumes),
+        screened_count=0,
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    session_id = session.id
+    db.close()
+
     items: list[tuple[str, bytes]] = []
     for up in resumes:
         filename = up.filename or "resume"
@@ -156,15 +401,12 @@ async def screen_stream(resumes: list[UploadFile] = File(...), job: str = Form(.
 
     async def event_gen():
         total = len(items)
-        yield _sse({"type": "job_ready", "total": total,
+        yield _sse({"type": "job_ready", "total": total, "session_id": session_id,
                     "job": {"title": job_spec["title"], "company": job_spec["company"]}})
         ranking: list[dict] = []
+        screened = 0
         for idx, (filename, data) in enumerate(items):
             resume_id = uuid.uuid4().hex
-            _candidate_store[resume_id] = {
-                "status": "New", "notes": "", "reject_reason": "",
-                "filename": filename,
-            }
             yield _sse({"type": "resume_start", "resume_id": resume_id,
                         "filename": filename, "index": idx, "total": total})
             try:
@@ -174,22 +416,35 @@ async def screen_stream(resumes: list[UploadFile] = File(...), job: str = Form(.
                                     "filename": filename, "index": idx, "total": total,
                                     **payload})
                     else:
-                        _candidate_store[resume_id]["status"] = "Screened"
+                        dbs = get_session()
+                        try:
+                            _persist_candidate(dbs, session_id, resume_id, filename, payload)
+                        finally:
+                            dbs.close()
                         row = ranking_row(payload)
                         row["status"] = "Screened"
                         ranking.append(row)
+                        screened += 1
                         yield _sse({"type": "resume_done", "resume_id": resume_id,
                                     "filename": filename, "index": idx, "total": total,
                                     "candidate": payload})
-            except Exception as exc:  # one bad file must not kill the batch
+            except Exception:  # one bad file must not kill the batch
                 yield _sse({"type": "resume_error", "resume_id": resume_id,
                             "filename": filename, "index": idx, "total": total,
                             "message": "Could not analyse this file."})
         ranking.sort(key=lambda r: r["score"], reverse=True)
         for rank, row in enumerate(ranking, start=1):
             row["rank"] = rank
-        yield _sse({"type": "batch_complete", "total": total,
-                    "screened": len(ranking), "ranking": ranking})
+        dbs = get_session()
+        try:
+            s = dbs.query(ScreeningSession).filter(ScreeningSession.id == session_id).first()
+            if s:
+                s.screened_count = screened
+                dbs.commit()
+        finally:
+            dbs.close()
+        yield _sse({"type": "batch_complete", "total": total, "screened": screened,
+                    "session_id": session_id, "ranking": ranking})
 
     return StreamingResponse(
         event_gen(),
@@ -198,26 +453,192 @@ async def screen_stream(resumes: list[UploadFile] = File(...), job: str = Form(.
     )
 
 
+# ----------------------------------------------------------------------------
+# Candidate statuses (human-only — scoring never sets these)
+# ----------------------------------------------------------------------------
+
 @app.post("/api/candidates/status")
-def set_candidate_status(item: CandidateStatusIn):
-    """Human-only status change. Scoring never sets statuses automatically —
-    a low score can never reject a candidate."""
+def set_candidate_status(item: CandidateStatusIn, user: User = Depends(get_current_user)):
+    """Human-only status change. A low score can never reject a candidate."""
     if item.status not in CANDIDATE_STATUSES:
         raise HTTPException(status_code=400,
                             detail=f"status must be one of {CANDIDATE_STATUSES}.")
-    entry = _candidate_store.get(item.resume_id)
-    if entry is None:
-        raise HTTPException(status_code=404, detail="Unknown resume_id.")
-    entry.update({
-        "status": item.status,
-        "notes": item.notes or "",
-        "reject_reason": item.reject_reason if item.status == "Rejected" else "",
-    })
-    return {"resume_id": item.resume_id, **entry}
+    db = get_session()
+    try:
+        cand = (db.query(Candidate).join(ScreeningSession)
+                  .filter(Candidate.resume_id == item.resume_id,
+                          ScreeningSession.user_id == user.id).first())
+        if cand is None:
+            raise HTTPException(status_code=404, detail="Unknown resume_id.")
+        old = cand.status
+        cand.status = item.status
+        cand.notes = item.notes or ""
+        cand.reject_reason = item.reject_reason if item.status == "Rejected" else ""
+        db.add(StatusHistory(candidate_id=cand.id, old_status=old,
+                             new_status=item.status, notes=cand.notes,
+                             reject_reason=cand.reject_reason))
+        db.commit()
+        return {"resume_id": cand.resume_id, "status": cand.status, "notes": cand.notes,
+                "reject_reason": cand.reject_reason, "filename": cand.filename}
+    finally:
+        db.close()
 
 
 @app.get("/api/candidates/statuses")
-def get_candidate_statuses():
-    return {rid: {"status": e["status"], "notes": e["notes"],
-                  "reject_reason": e["reject_reason"], "filename": e["filename"]}
-            for rid, e in _candidate_store.items()}
+def get_candidate_statuses(session_id: Optional[int] = None,
+                           user: User = Depends(get_current_user)):
+    db = get_session()
+    try:
+        q = (db.query(Candidate).join(ScreeningSession)
+               .filter(ScreeningSession.user_id == user.id))
+        if session_id:
+            q = q.filter(Candidate.session_id == session_id)
+        return {c.resume_id: {"status": c.status, "notes": c.notes,
+                              "reject_reason": c.reject_reason, "filename": c.filename}
+                for c in q.all()}
+    finally:
+        db.close()
+
+
+@app.get("/api/candidates/{resume_id}")
+def get_candidate(resume_id: str, user: User = Depends(get_current_user)):
+    db = get_session()
+    try:
+        cand = (db.query(Candidate).join(ScreeningSession)
+                  .filter(Candidate.resume_id == resume_id,
+                          ScreeningSession.user_id == user.id).first())
+        if cand is None:
+            raise HTTPException(status_code=404, detail="Candidate not found.")
+        return candidate_public(cand)
+    finally:
+        db.close()
+
+
+# ----------------------------------------------------------------------------
+# Dashboard
+# ----------------------------------------------------------------------------
+
+@app.get("/api/dashboard")
+def dashboard(user: User = Depends(get_current_user)):
+    db = get_session()
+    try:
+        sessions = (db.query(ScreeningSession)
+                      .filter(ScreeningSession.user_id == user.id)
+                      .order_by(ScreeningSession.created_at.desc()).all())
+        candidates = (db.query(Candidate).join(ScreeningSession)
+                        .filter(ScreeningSession.user_id == user.id).all())
+        scores = [c.score for c in candidates]
+        dist = {"Strong match": 0, "Worth reviewing": 0, "Weak match": 0}
+        for c in candidates:
+            if c.band in dist:
+                dist[c.band] += 1
+        return {
+            "stats": {
+                "total_resumes": sum(s.total_resumes for s in sessions),
+                "candidates_processed": len(candidates),
+                "shortlisted": sum(1 for c in candidates if c.status == "Shortlisted"),
+                "avg_score": round(sum(scores) / len(scores), 4) if scores else 0.0,
+            },
+            "recent_sessions": [session_to_dict(s) for s in sessions[:8]],
+            "score_distribution": [{"label": k, "count": v} for k, v in dist.items()],
+        }
+    finally:
+        db.close()
+
+
+# ----------------------------------------------------------------------------
+# Screening history
+# ----------------------------------------------------------------------------
+
+@app.get("/api/sessions")
+def list_sessions(user: User = Depends(get_current_user)):
+    db = get_session()
+    try:
+        sessions = (db.query(ScreeningSession)
+                      .filter(ScreeningSession.user_id == user.id)
+                      .order_by(ScreeningSession.created_at.desc()).all())
+        return [session_to_dict(s) for s in sessions]
+    finally:
+        db.close()
+
+
+@app.get("/api/sessions/{session_id}")
+def get_session_detail(session_id: int, user: User = Depends(get_current_user)):
+    db = get_session()
+    try:
+        s = (db.query(ScreeningSession)
+               .filter(ScreeningSession.id == session_id,
+                       ScreeningSession.user_id == user.id).first())
+        if s is None:
+            raise HTTPException(status_code=404, detail="Session not found.")
+        cands = sorted(s.candidates, key=lambda c: c.score, reverse=True)
+        ranking = []
+        for rank, c in enumerate(cands, start=1):
+            row = candidate_row(c)
+            row["rank"] = rank
+            ranking.append(row)
+        return {
+            **session_to_dict(s),
+            "job": s.job_snapshot or {},
+            "ranking": ranking,
+            "candidates": {c.resume_id: candidate_public(c) for c in cands},
+        }
+    finally:
+        db.close()
+
+
+# ----------------------------------------------------------------------------
+# Exports
+# ----------------------------------------------------------------------------
+
+def _owned_session(db, session_id: int, user: User) -> ScreeningSession:
+    s = (db.query(ScreeningSession)
+           .filter(ScreeningSession.id == session_id,
+                   ScreeningSession.user_id == user.id).first())
+    if s is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    return s
+
+
+@app.get("/api/sessions/{session_id}/export.csv")
+def export_csv(session_id: int, user: User = Depends(get_current_user)):
+    db = get_session()
+    try:
+        s = _owned_session(db, session_id, user)
+        cands = sorted(s.candidates, key=lambda c: c.score, reverse=True)
+        data = build_csv(s, cands)
+    finally:
+        db.close()
+    return Response(content=data, media_type="text/csv",
+                    headers={"Content-Disposition":
+                             f"attachment; filename=screening-session-{session_id}.csv"})
+
+
+@app.get("/api/sessions/{session_id}/export.xlsx")
+def export_xlsx(session_id: int, user: User = Depends(get_current_user)):
+    db = get_session()
+    try:
+        s = _owned_session(db, session_id, user)
+        cands = sorted(s.candidates, key=lambda c: c.score, reverse=True)
+        data = build_xlsx(s, cands)
+    finally:
+        db.close()
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition":
+                 f"attachment; filename=screening-session-{session_id}.xlsx"})
+
+
+@app.get("/api/sessions/{session_id}/report.pdf")
+def export_pdf(session_id: int, user: User = Depends(get_current_user)):
+    db = get_session()
+    try:
+        s = _owned_session(db, session_id, user)
+        cands = sorted(s.candidates, key=lambda c: c.score, reverse=True)
+        data = build_pdf(s, cands)
+    finally:
+        db.close()
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition":
+                             f"attachment; filename=screening-report-{session_id}.pdf"})
