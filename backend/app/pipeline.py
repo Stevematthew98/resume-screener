@@ -104,7 +104,11 @@ SECTION_PATTERNS = {
     "experience": r"(?im)^\s*(work experience|professional experience|experience|employment history|work history|internship|internships)\s*$",
     "skills": r"(?im)^\s*(skills|technical skills|core skills|key skills|competencies|technologies|tech stack|skillset)\s*$",
     "education": r"(?im)^\s*(education|academic background|qualifications|academic qualifications|academics)\s*$",
+    "projects": r"(?im)^\s*(projects|personal projects|key projects|academic projects|selected projects)\s*$",
+    "certifications": r"(?im)^\s*(certifications|certificates|certification|courses|licenses)\s*$",
 }
+
+SECTION_NAMES = ("summary", "experience", "skills", "education", "projects", "certifications")
 
 MONTHS = {
     "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
@@ -147,7 +151,7 @@ def split_sections(text: str) -> dict:
         for m in re.finditer(pat, text):
             hits.append((m.start(), name, m.end()))
     hits.sort()
-    sections = {"summary": "", "experience": "", "skills": "", "education": ""}
+    sections = {k: "" for k in SECTION_NAMES}
     if not hits:
         sections["experience"] = text  # fallback: treat all as experience-ish body
         return sections
@@ -244,6 +248,39 @@ def extract_job_titles(experience_text: str) -> list:
     return out[:10]
 
 
+NAME_SKIP_RE = re.compile(r"(?i)\b(resume|curriculum vitae|\bcv\b|bio-?data|profile)\b")
+
+
+def extract_personal_info(raw_text: str) -> dict:
+    """Best-effort name/email/phone extraction. Empty strings when not found."""
+    text = raw_text or ""
+    email_m = EMAIL_RE.search(text)
+    email = email_m.group(0) if email_m else ""
+    phone = ""
+    for m in PHONE_RE.finditer(text):
+        digits = re.sub(r"\D", "", m.group(0))
+        if 10 <= len(digits) <= 15:
+            phone = m.group(0).strip()
+            break
+    name = ""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    for ln in lines[:6]:
+        words = ln.split()
+        if (2 <= len(words) <= 4 and len(ln) <= 60
+                and not re.search(r"\d|@|https?://", ln)
+                and not NAME_SKIP_RE.search(ln)
+                and all((not w[0].isalpha()) or w[0].isupper() for w in words)):
+            name = ln.strip(" -|•")
+            break
+    if not name:
+        _load_nlp()
+        for ent in _nlp(text[:800]).ents:
+            if ent.label_ == "PERSON":
+                name = ent.text.strip()
+                break
+    return {"name": name, "email": email, "phone": phone}
+
+
 def _cos(a, b) -> float:
     import numpy as np
 
@@ -255,8 +292,13 @@ def _cos(a, b) -> float:
 # Main pipeline
 # ----------------------------------------------------------------------------
 
-def analyze_resume(file_bytes: bytes, filename: str, job_description: str,
-                   min_experience_years: float = 0.0) -> dict:
+def run_pipeline_stages(file_bytes: bytes, filename: str, job_description: str,
+                      min_experience_years: float = 0.0):
+    """Run the 8 pipeline stages, yielding (stage_key, stage_output) as each completes.
+
+    `analyze_resume` collects these into the classic full result dict, so both the
+    regular endpoint and the streaming endpoint share one code path.
+    """
     ensure_models()
     analysis_id = uuid.uuid4().hex
 
@@ -270,6 +312,7 @@ def analyze_resume(file_bytes: bytes, filename: str, job_description: str,
         "job_description_chars": len(job_description or ""),
         "min_experience_years": min_experience_years,
     }
+    yield ("step1_ingest", step1)
 
     # ---- Step 2: extraction --------------------------------------------------
     jd_text = (job_description or "").strip()
@@ -280,14 +323,16 @@ def analyze_resume(file_bytes: bytes, filename: str, job_description: str,
     else:
         raw_text, method = "", "unsupported"
     raw_text = raw_text.strip()
-    sections = split_sections(raw_text) if raw_text else {k: "" for k in ("summary", "experience", "skills", "education")}
+    sections = split_sections(raw_text) if raw_text else {k: "" for k in SECTION_NAMES}
     step2 = {
         "extraction_method": method,
         "chars_extracted": len(raw_text),
         "words_extracted": len(raw_text.split()),
         "sections_found": [k for k, v in sections.items() if v.strip()],
         "section_previews": {k: redact_echo(v) for k, v in sections.items() if v.strip()},
+        "sections_text": {k: redact_echo(v, 4000) for k, v in sections.items() if v.strip()},
     }
+    yield ("step2_extraction", step2)
 
     # ---- Step 3: preprocessing -----------------------------------------------
     _load_nlp()
@@ -306,8 +351,10 @@ def analyze_resume(file_bytes: bytes, filename: str, job_description: str,
         "experience_years": exp_years,
         "degrees": degrees,
         "job_titles": titles,
+        "personal": extract_personal_info(raw_text),
         "pii_stripped": True,
     }
+    yield ("step3_preprocessing", step3)
 
     # ---- Step 4: vectors -----------------------------------------------------
     model = _load_model()
@@ -332,6 +379,7 @@ def analyze_resume(file_bytes: bytes, filename: str, job_description: str,
         "cosine_experience_vs_jd": round(sim_exp, 4),
         "tfidf_cosine": round(tfidf_sim, 4),
     }
+    yield ("step4_vectors", step4)
 
     # ---- Step 5: matching / scoring ------------------------------------------
     skill_overlap = (len(set(jd_skills) & set(resume_skills)) / len(jd_skills)) if jd_skills else 0.0
@@ -368,6 +416,7 @@ def analyze_resume(file_bytes: bytes, filename: str, job_description: str,
         "matched_skills": matched,
         "missing_skills": missing,
     }
+    yield ("step5_matching", step5)
 
     # ---- Step 6: transparency -------------------------------------------------
     step6 = {
@@ -386,6 +435,7 @@ def analyze_resume(file_bytes: bytes, filename: str, job_description: str,
         "limitations": ("Demo-grade skill taxonomy (~200 skills); no OCR for scanned PDFs; "
                         "experience parsing is regex-based and approximate."),
     }
+    yield ("step6_transparency", step6)
 
     # ---- Step 7: output assembly ----------------------------------------------
     step7 = {
@@ -400,6 +450,7 @@ def analyze_resume(file_bytes: bytes, filename: str, job_description: str,
         "meets_experience_requirement": meets_experience,
         "created_at": datetime.utcnow().isoformat() + "Z",
     }
+    yield ("step7_result", step7)
 
     # ---- Step 8: feedback hook -------------------------------------------------
     step8 = {
@@ -407,15 +458,65 @@ def analyze_resume(file_bytes: bytes, filename: str, job_description: str,
         "feedback_endpoint": "/api/feedback",
         "how": "POST {\"analysis_id\": \"<id>\", \"verdict\": \"good_fit\" | \"bad_fit\"} to record reviewer judgment.",
     }
+    yield ("step8_feedback", step8)
 
-    return {
-        "analysis_id": analysis_id,
-        "step1_ingest": step1,
-        "step2_extraction": step2,
-        "step3_preprocessing": step3,
-        "step4_vectors": step4,
-        "step5_matching": step5,
-        "step6_transparency": step6,
-        "step7_result": step7,
-        "step8_feedback": step8,
-    }
+
+# ----------------------------------------------------------------------------
+# Stage metadata for the live streaming UI (plain-language labels)
+# ----------------------------------------------------------------------------
+
+STAGE_LABELS = {
+    "step1_ingest": "Receiving your file",
+    "step2_extraction": "Reading the text",
+    "step3_preprocessing": "Finding your skills",
+    "step4_vectors": "Comparing with the job",
+    "step5_matching": "Scoring the match",
+    "step6_transparency": "Explaining the score",
+    "step7_result": "Preparing your report",
+    "step8_feedback": "Ready for your feedback",
+}
+
+STAGE_ORDER = tuple(STAGE_LABELS.keys())
+
+
+def stage_summary(stage_key: str, out: dict) -> str:
+    """One-line, plain-language summary of a completed stage, from real outputs."""
+    try:
+        if stage_key == "step1_ingest":
+            kb = out.get("file_size_bytes", 0) / 1024
+            return f"{kb:.0f} KB received — ready to read"
+        if stage_key == "step2_extraction":
+            words = out.get("words_extracted", 0)
+            nsec = len(out.get("sections_found", []))
+            return f"{words:,} words extracted from {nsec} sections"
+        if stage_key == "step3_preprocessing":
+            n = out.get("skills_count", 0)
+            yrs = out.get("experience_years", 0)
+            return f"{n} skills found · {yrs} years of experience"
+        if stage_key == "step4_vectors":
+            return "Meaning comparison with the job computed"
+        if stage_key == "step5_matching":
+            pct = int(round(out.get("final_score", 0) * 100))
+            return f"Match signals combined — {pct}/100 ({out.get('band', '')})"
+        if stage_key == "step6_transparency":
+            return "Explanation and fairness notes ready"
+        if stage_key == "step7_result":
+            return "Report assembled"
+        if stage_key == "step8_feedback":
+            return "Ready for your feedback"
+    except Exception:
+        pass
+    return "Done"
+
+
+def analyze_resume(file_bytes: bytes, filename: str, job_description: str,
+                   min_experience_years: float = 0.0) -> dict:
+    """Classic full result (unchanged shape) — collects the stage generator."""
+    result: dict = {}
+    analysis_id = None
+    for key, out in run_pipeline_stages(file_bytes, filename, job_description,
+                                       min_experience_years):
+        result[key] = out
+        if key == "step1_ingest":
+            analysis_id = out["analysis_id"]
+    return {"analysis_id": analysis_id, **result}
