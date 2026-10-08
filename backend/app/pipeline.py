@@ -21,7 +21,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-import fitz  # PyMuPDF
+import pymupdf  # PyMuPDF
 import pdfplumber
 from docx import Document
 import spacy
@@ -163,7 +163,7 @@ def extract_text_pdf(data: bytes) -> tuple[str, str]:
     """PyMuPDF primary; pdfplumber fallback. Returns (text, method)."""
     text = ""
     try:
-        with fitz.open(stream=data, filetype="pdf") as doc:
+        with pymupdf.open(stream=data, filetype="pdf") as doc:
             text = "\n".join(page.get_text() for page in doc)
     except Exception:
         text = ""
