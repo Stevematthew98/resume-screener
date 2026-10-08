@@ -20,9 +20,13 @@ Monorepo:
 4. **Vectors** — scikit-learn TF-IDF cosine (resume vs JD) plus
    `sentence-transformers/all-MiniLM-L6-v2` embedding cosine per section
    (full text, skills, experience) vs the JD.
-5. **Matching / scoring** — hard filter on minimum experience; weighted score
-   `0.35·emb_full + 0.25·emb_skills + 0.15·emb_experience + 0.15·skill_overlap + 0.10·tfidf`;
-   bands: ≥0.65 Strong match · 0.40–0.65 Worth reviewing · <0.40 Weak match.
+5. **Matching / scoring** — hard filter on minimum experience.
+   Single mode (`/api/analyze`): weighted score
+   `0.35·emb_full + 0.25·emb_skills + 0.15·emb_experience + 0.15·skill_overlap + 0.10·tfidf`.
+   Recruiter batch mode (`/api/screen/stream`): explainable fixed weights
+   `0.50·skills_match + 0.25·jd_similarity + 0.15·experience + 0.10·education`,
+   each component shown with its point contribution.
+   Bands: ≥0.65 Strong match · 0.40–0.65 Worth reviewing · <0.40 Weak match.
    Matched vs missing JD skills listed.
 6. **Transparency** — full score breakdown, method note, fairness note
    (names/colleges never used in scoring), limitations.
@@ -67,11 +71,39 @@ VITE_API_URL=http://localhost:8000 npm run dev
 - **Frontend → Vercel** from `frontend/` (root directory = `frontend`);
   set `VITE_API_URL` to the live Railway URL in production env.
 
+## Batch screening (recruiter flow)
+
+- `POST /api/screen/stream` (multipart, SSE `text/event-stream`): `resumes` (1–20
+  PDF/DOCX files), `job` (JSON: `title`, `company`, `jd_text`, `required_skills`,
+  `preferred_skills`, `min_experience_years`, `education_requirements`).
+  Streams `job_ready` → per-resume `resume_start` → 8 `stage` events (same NLP
+  pipeline, plain-language labels + one-line summaries from real outputs) →
+  `resume_done` (full candidate profile) → `batch_complete` (ranking).
+- Candidate scoring (fixed, explainable weights):
+  `0.50·skills_match + 0.25·jd_similarity + 0.15·experience + 0.10·education`.
+  Every component is shown with its point contribution and a grounded,
+  evidence-only explanation.
+- `POST /api/candidates/status`: `{"resume_id","status","notes","reject_reason"}` —
+  statuses: New, Screened, Shortlisted, Under Review, Rejected. **Human-only**:
+  scoring never changes a status; a low score can never auto-reject.
+- `GET /api/candidates/statuses` → all known candidate statuses.
+- Bias rules: names, colleges, contact details and other identity markers are
+  never scoring inputs; personal info (name/email/phone) is extracted only for
+  display in candidate profiles. Files are processed in memory and never stored.
+
 ## Known limitations
 
-- Feedback store is **in-memory** — verdicts are lost on every backend redeploy.
-  Use a durable database before any real use.
+- Feedback and candidate-status stores are **in-memory** — lost on every backend
+  redeploy. Use a durable database before any real use.
 - No OCR: scanned/image PDFs with no text layer extract nothing.
 - Skill taxonomy is demo-grade (~200 entries); niche domains need a bigger list.
 - Experience parsing is regex-based and approximate.
 - No ML training in v1: scoring is similarity + rules, no learned ranker.
+
+## Roadmap (deferred)
+
+- Login / recruiter authentication and multi-user workspaces
+- Persistent database for candidates, statuses, notes and feedback
+- Dashboard charts (score distributions, funnel by status, skill-gap analytics)
+- CSV / Excel / PDF export of the shortlist
+- Screening history across batches
