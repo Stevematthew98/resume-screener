@@ -1,6 +1,24 @@
-import React, { useState } from 'react';
-import { blankStages, getCandidateStatuses, setCandidateStatus, streamScreen } from './api';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  blankStages,
+  createJob,
+  downloadExport,
+  getCandidateStatuses,
+  getDashboard,
+  getMe,
+  getSessionDetail,
+  getToken,
+  listJobs,
+  listSessions,
+  logout as apiLogout,
+  setCandidateStatus,
+  streamScreen,
+} from './api';
+import Dashboard from './components/Dashboard';
+import HistoryView from './components/HistoryView';
+import JobsView from './components/JobsView';
 import JobSetup from './components/JobSetup';
+import Login from './components/Login';
 import ScreeningView from './components/ScreeningView';
 import RankingView, { CandidateDetail } from './components/RankingView';
 
@@ -26,25 +44,97 @@ function toJobPayload(job) {
   };
 }
 
+function jobToForm(j) {
+  return {
+    title: j.title || '',
+    company: j.company || '',
+    jdText: j.jd_text || '',
+    requiredSkills: (j.required_skills || []).join(', '),
+    preferredSkills: (j.preferred_skills || []).join(', '),
+    minExp: j.min_experience_years ? String(j.min_experience_years) : '',
+    eduReq: j.education_requirements || '',
+  };
+}
+
 export default function App() {
-  const [view, setView] = useState('setup'); // setup | screening | ranking
+  const [user, setUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  const [view, setView] = useState('dashboard'); // dashboard | jobs | history | setup | screening | ranking | historyDetail
   const [job, setJob] = useState(EMPTY_JOB);
   const [files, setFiles] = useState([]);
   const [error, setError] = useState('');
+  const [activeJobId, setActiveJobId] = useState(null);
 
   const [total, setTotal] = useState(0);
   const [doneCount, setDoneCount] = useState(0);
   const [currentFile, setCurrentFile] = useState('');
-  const [pipes, setPipes] = useState([]); // [{key, filename, resume_id, stages, status}]
+  const [pipes, setPipes] = useState([]);
   const [screenError, setScreenError] = useState('');
 
   const [ranking, setRanking] = useState([]);
   const [candidates, setCandidates] = useState({});
   const [statuses, setStatuses] = useState({});
   const [selectedId, setSelectedId] = useState(null);
+  const [sessionId, setSessionId] = useState(null);
+
+  const [jobs, setJobs] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [dashData, setDashData] = useState(null);
+  const [historyDetail, setHistoryDetail] = useState(null);
+
+  function handleSessionExpired() {
+    apiLogout();
+    setUser(null);
+    setView('dashboard');
+  }
+
+  const guard = useCallback(async (fn) => {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e.sessionExpired) handleSessionExpired();
+      throw e;
+    }
+  }, []);
+
+  // Restore session on load
+  useEffect(() => {
+    if (!getToken()) { setAuthChecked(true); return; }
+    getMe()
+      .then((u) => setUser(u))
+      .catch(() => apiLogout())
+      .finally(() => setAuthChecked(true));
+  }, []);
+
+  const refreshJobs = useCallback(() => guard(() => listJobs().then(setJobs)), [guard]);
+  const refreshSessions = useCallback(() => guard(() => listSessions().then(setSessions)), [guard]);
+  const refreshDashboard = useCallback(() => guard(() => getDashboard().then(setDashData)), [guard]);
+
+  useEffect(() => {
+    if (user) {
+      refreshDashboard().catch(() => {});
+      refreshJobs().catch(() => {});
+      refreshSessions().catch(() => {});
+    }
+  }, [user, refreshDashboard, refreshJobs, refreshSessions]);
 
   function updatePipe(key, fn) {
     setPipes((prev) => prev.map((p) => (p.key === key ? fn(p) : p)));
+  }
+
+  function goSetup(prefillJob) {
+    if (prefillJob) {
+      setJob(jobToForm(prefillJob));
+      setActiveJobId(prefillJob.id);
+    } else {
+      setJob(EMPTY_JOB);
+      setActiveJobId(null);
+    }
+    setFiles([]);
+    setError('');
+    setView('setup');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   async function startScreening() {
@@ -54,6 +144,20 @@ export default function App() {
     if (!files.length) { setError('Please upload at least one resume.'); return; }
 
     const payload = toJobPayload(job);
+    let jobId = activeJobId;
+    try {
+      // Auto-save ad-hoc jobs so every run is linked to a job profile + history.
+      if (!jobId) {
+        const created = await guard(() => createJob(payload));
+        jobId = created.id;
+        setActiveJobId(jobId);
+        refreshJobs().catch(() => {});
+      }
+    } catch (e) {
+      setError(e.message || 'Could not save the job profile.');
+      return;
+    }
+
     setPipes(files.map((f, i) => ({ key: `f${i}`, filename: f.name, resume_id: null, stages: blankStages(), status: 'queued' })));
     setTotal(files.length);
     setDoneCount(0);
@@ -61,6 +165,8 @@ export default function App() {
     setScreenError('');
     setRanking([]);
     setCandidates({});
+    setStatuses({});
+    setSessionId(null);
     setView('screening');
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -69,6 +175,7 @@ export default function App() {
       await streamScreen(files, payload, (evt) => {
         if (evt.type === 'job_ready') {
           setTotal(evt.total);
+          if (evt.session_id) setSessionId(evt.session_id);
         } else if (evt.type === 'resume_start') {
           const key = `f${evt.index}`;
           byIndex[evt.index] = evt.resume_id;
@@ -88,7 +195,6 @@ export default function App() {
               if (s.status === 'active') return { ...s, status: 'done', summary: s.summary };
               return s;
             }).map((s, i, arr) => {
-              // activate the next pending stage after the one just completed
               const doneIdx = arr.findIndex((x) => x.key === evt.stage);
               if (i === doneIdx + 1 && s.status === 'pending') return { ...s, status: 'active' };
               return s;
@@ -113,41 +219,112 @@ export default function App() {
           setDoneCount((c) => c + 1);
         } else if (evt.type === 'batch_complete') {
           setRanking(evt.ranking || []);
-          // sync any statuses already known
-          getCandidateStatuses().then((sv) => {
+          if (evt.session_id) setSessionId(evt.session_id);
+          getCandidateStatuses(evt.session_id).then((sv) => {
             setStatuses((prev) => ({ ...sv, ...prev }));
           }).catch(() => {});
+          refreshDashboard().catch(() => {});
+          refreshSessions().catch(() => {});
           setTimeout(() => {
             setView('ranking');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }, 1200);
         }
-      });
+      }, { jobId });
     } catch (e) {
+      if (e.sessionExpired) { handleSessionExpired(); return; }
       setScreenError(e.message || 'Screening failed. Please try again.');
     }
   }
 
   async function handleStatusChange(resume_id, status, notes, reject_reason) {
-    const updated = await setCandidateStatus(resume_id, status, notes, reject_reason);
+    const updated = await guard(() => setCandidateStatus(resume_id, status, notes, reject_reason));
     setStatuses((prev) => ({
       ...prev,
       [resume_id]: { status: updated.status, notes: updated.notes, reject_reason: updated.reject_reason, filename: updated.filename },
     }));
+    if (historyDetail) {
+      setHistoryDetail((prev) => prev && ({
+        ...prev,
+        candidates: {
+          ...prev.candidates,
+          [resume_id]: prev.candidates[resume_id]
+            ? { ...prev.candidates[resume_id], status: updated.status, notes: updated.notes, reject_reason: updated.reject_reason }
+            : prev.candidates[resume_id],
+        },
+      }));
+    }
+  }
+
+  async function openSession(id) {
+    try {
+      const detail = await guard(() => getSessionDetail(id));
+      const st = {};
+      (detail.ranking || []).forEach((r) => {
+        st[r.resume_id] = { status: r.status || 'Screened', notes: r.notes || '', reject_reason: r.reject_reason || '', filename: r.filename };
+      });
+      setStatuses(st);
+      setHistoryDetail(detail);
+      setSelectedId(null);
+      setView('historyDetail');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      alert(e.message || 'Could not open the session.');
+    }
+  }
+
+  async function handleExport(kind) {
+    const id = sessionId || (historyDetail && historyDetail.id);
+    if (!id) return;
+    await guard(() => downloadExport(id, kind));
+  }
+
+  function handleLogout() {
+    apiLogout();
+    setUser(null);
+    setView('dashboard');
+    setDashData(null);
+    setJobs([]);
+    setSessions([]);
   }
 
   function restart() {
     setView('setup');
+    setJob(EMPTY_JOB);
+    setActiveJobId(null);
     setFiles([]);
     setRanking([]);
     setCandidates({});
     setStatuses({});
     setSelectedId(null);
+    setSessionId(null);
     setError('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  const selected = selectedId ? candidates[selectedId] : null;
+  const selected = selectedId ? (candidates[selectedId] || (historyDetail && historyDetail.candidates[selectedId])) : null;
+  const selectedStatus = selectedId
+    ? (statuses[selectedId] || { status: (selected && selected.status) || 'Screened', notes: '', reject_reason: '' })
+    : null;
+  const isHistoryDetail = view === 'historyDetail';
+
+  if (!authChecked) {
+    return <div className="page"><p className="muted" style={{ padding: 40, textAlign: 'center' }}>Loading…</p></div>;
+  }
+
+  if (!user) {
+    return (
+      <div className="page">
+        <Login onAuth={(u) => { setUser(u); setView('dashboard'); }} />
+      </div>
+    );
+  }
+
+  const nav = [
+    ['dashboard', 'Dashboard'],
+    ['jobs', 'Jobs'],
+    ['history', 'History'],
+  ];
 
   return (
     <div className="page">
@@ -158,29 +335,63 @@ export default function App() {
           <h1>Resume Screener</h1>
           <p>Screen a whole batch of resumes against a role — watch the analysis happen, then work a ranked shortlist.</p>
         </div>
+        <div className="userbar">
+          <span className="user-chip">{user.name || user.email}</span>
+          <button type="button" className="btn-ghost btn-sm" onClick={handleLogout}>Sign out</button>
+        </div>
       </header>
 
-      <nav className="viewtabs">
-        {[
-          ['setup', '1 · Job & resumes'],
-          ['screening', '2 · Screening'],
-          ['ranking', `3 · Shortlist${ranking.length ? ` (${ranking.length})` : ''}`],
-        ].map(([v, label]) => (
+      <nav className="viewtabs main-nav">
+        {nav.map(([v, label]) => (
           <button
             key={v}
             type="button"
-            className={`viewtab ${view === v ? 'active' : ''}`}
-            disabled={v === 'screening' || (v === 'ranking' && !ranking.length)}
-            onClick={() => v === 'setup' && setView('setup')}
+            className={`viewtab ${view === v || (v === 'history' && isHistoryDetail) ? 'active' : ''}`}
+            onClick={() => {
+              if (v === 'dashboard') refreshDashboard().catch(() => {});
+              if (v === 'jobs') refreshJobs().catch(() => {});
+              if (v === 'history') refreshSessions().catch(() => {});
+              setView(v);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
           >
             {label}
           </button>
         ))}
+        {['setup', 'screening', 'ranking'].includes(view) && (
+          <span className="viewtab active">Screening flow</span>
+        )}
       </nav>
 
+      {view === 'dashboard' && (
+        <Dashboard
+          data={dashData}
+          onNewScreening={() => goSetup(null)}
+          onOpenSession={openSession}
+        />
+      )}
+
+      {view === 'jobs' && (
+        <JobsView
+          jobs={jobs}
+          onRefresh={refreshJobs}
+          onScreenJob={(j) => goSetup(j)}
+          onNewJob={() => goSetup(null)}
+        />
+      )}
+
+      {view === 'history' && (
+        <HistoryView sessions={sessions} onOpenSession={openSession} />
+      )}
+
       {view === 'setup' && (
-        <JobSetup job={job} setJob={setJob} files={files} setFiles={setFiles}
-          onScreen={startScreening} error={error} />
+        <>
+          <button type="button" className="back-link" onClick={() => setView(activeJobId ? 'jobs' : 'dashboard')}>
+            ← Back
+          </button>
+          <JobSetup job={job} setJob={setJob} files={files} setFiles={setFiles}
+            onScreen={startScreening} error={error} />
+        </>
       )}
 
       {view === 'screening' && (
@@ -190,15 +401,33 @@ export default function App() {
 
       {view === 'ranking' && (
         <RankingView job={job} ranking={ranking} candidates={candidates} statuses={statuses}
-          onSelectCandidate={setSelectedId} onStatusChange={handleStatusChange} onRestart={restart} />
+          onSelectCandidate={setSelectedId} onStatusChange={handleStatusChange} onRestart={restart}
+          sessionId={sessionId} onExport={handleExport} />
+      )}
+
+      {isHistoryDetail && historyDetail && (
+        <RankingView
+          job={{ title: historyDetail.job_title, company: historyDetail.job_company }}
+          ranking={historyDetail.ranking || []}
+          candidates={historyDetail.candidates || {}}
+          statuses={statuses}
+          onSelectCandidate={setSelectedId}
+          onStatusChange={handleStatusChange}
+          onRestart={restart}
+          sessionId={historyDetail.id}
+          readOnly
+          onExport={handleExport}
+          onBack={() => { setView('history'); setHistoryDetail(null); }}
+        />
       )}
 
       {selected && (
         <CandidateDetail
           candidate={selected}
-          statusInfo={statuses[selected.resume_id] || { status: 'Screened', notes: '', reject_reason: '' }}
+          statusInfo={selectedStatus}
           onClose={() => setSelectedId(null)}
-          onStatus={handleStatusChange}
+          onStatus={isHistoryDetail ? null : handleStatusChange}
+          readOnly={isHistoryDetail}
         />
       )}
 

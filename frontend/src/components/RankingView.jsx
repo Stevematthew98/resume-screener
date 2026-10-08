@@ -68,7 +68,7 @@ function ScoreRing({ score, size = 120 }) {
 const COMPONENT_ORDER = ['skills', 'jd_similarity', 'experience', 'education'];
 const COMPONENT_MAX_POINTS = { skills: 50, jd_similarity: 25, experience: 15, education: 10 };
 
-function CandidateDetail({ candidate, statusInfo, onClose, onStatus }) {
+function CandidateDetail({ candidate, statusInfo, onClose, onStatus, readOnly = false }) {
   const [notes, setNotes] = useState(statusInfo.notes || '');
   const [rejectReason, setRejectReason] = useState(statusInfo.reject_reason || '');
   const [showReject, setShowReject] = useState(false);
@@ -217,6 +217,7 @@ function CandidateDetail({ candidate, statusInfo, onClose, onStatus }) {
             ))}
 
             <h3>Decision</h3>
+            {!readOnly ? (
             <div className="decision-box">
               <p className="hint">Rankings assist you — they never decide. No candidate is ever rejected automatically.</p>
               <div className="decision-actions">
@@ -242,6 +243,13 @@ function CandidateDetail({ candidate, statusInfo, onClose, onStatus }) {
                 <p className="reject-note"><strong>Rejection reason:</strong> {statusInfo.reject_reason}</p>
               )}
             </div>
+            ) : (
+            <div className="decision-box">
+              <p className="hint">Saved snapshot — status and notes as recorded at screening time.</p>
+              {statusInfo.notes && <p><strong>Notes:</strong> {statusInfo.notes}</p>}
+              {statusInfo.reject_reason && <p><strong>Rejection reason:</strong> {statusInfo.reject_reason}</p>}
+            </div>
+            )}
           </div>
         </div>
       </div>
@@ -252,11 +260,24 @@ function CandidateDetail({ candidate, statusInfo, onClose, onStatus }) {
 /**
  * Ranking table: sortable by score, filterable by skill/experience, searchable by name.
  */
-export default function RankingView({ job, ranking, candidates, statuses, onSelectCandidate, onStatusChange, onRestart }) {
+export default function RankingView({ job, ranking, candidates, statuses, onSelectCandidate, onStatusChange, onRestart, sessionId = null, readOnly = false, onExport = null, onBack = null }) {
   const [query, setQuery] = useState('');
   const [skillFilter, setSkillFilter] = useState('');
   const [minExpFilter, setMinExpFilter] = useState('');
   const [sortDir, setSortDir] = useState('desc');
+  const [exporting, setExporting] = useState('');
+
+  async function handleExport(kind) {
+    if (!onExport || exporting) return;
+    setExporting(kind);
+    try {
+      await onExport(kind);
+    } catch (e) {
+      alert(e.message || 'Export failed. Please try again.');
+    } finally {
+      setExporting('');
+    }
+  }
 
   const rows = useMemo(() => {
     let list = ranking.map((r) => ({
@@ -295,6 +316,19 @@ export default function RankingView({ job, ranking, candidates, statuses, onSele
           <button className="btn-ghost btn-sm" onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}>
             Score {sortDir === 'desc' ? '↓' : '↑'}
           </button>
+          {onExport && (
+            <span className="export-group">
+              <button className="btn-ghost btn-sm" disabled={!!exporting} onClick={() => handleExport('csv')}>
+                {exporting === 'csv' ? '…' : '⬇ CSV'}
+              </button>
+              <button className="btn-ghost btn-sm" disabled={!!exporting} onClick={() => handleExport('xlsx')}>
+                {exporting === 'xlsx' ? '…' : '⬇ Excel'}
+              </button>
+              <button className="btn-ghost btn-sm" disabled={!!exporting} onClick={() => handleExport('pdf')}>
+                {exporting === 'pdf' ? '…' : '⬇ PDF report'}
+              </button>
+            </span>
+          )}
         </div>
       </section>
 
@@ -344,7 +378,12 @@ export default function RankingView({ job, ranking, candidates, statuses, onSele
         </section>
       )}
 
-      <button className="cta cta-secondary" type="button" onClick={onRestart}>Screen another batch →</button>
+      {onBack && (
+        <button className="cta cta-secondary" type="button" onClick={onBack}>← Back to history</button>
+      )}
+      {!readOnly && (
+        <button className="cta cta-secondary" type="button" onClick={onRestart}>Screen another batch →</button>
+      )}
     </div>
   );
 }

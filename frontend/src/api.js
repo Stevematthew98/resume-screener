@@ -26,20 +26,152 @@ export function blankStages() {
   return STAGE_ORDER.map((key) => ({ key, label: STAGE_LABELS[key], status: 'pending', summary: '' }));
 }
 
+// ----------------------------------------------------------------------------
+// Auth token + authed fetch
+// ----------------------------------------------------------------------------
+
+const TOKEN_KEY = 'rs_token';
+
+export function getToken() {
+  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+}
+export function setToken(t) {
+  try {
+    if (t) localStorage.setItem(TOKEN_KEY, t);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch { /* ignore */ }
+}
+
+export async function apiFetch(path, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  const tok = getToken();
+  if (tok) headers['Authorization'] = `Bearer ${tok}`;
+  const res = await fetch(`${API_URL}${path}`, { ...opts, headers });
+  if (res.status === 401) {
+    setToken(null);
+    const err = new Error('SESSION_EXPIRED');
+    err.sessionExpired = true;
+    throw err;
+  }
+  return res;
+}
+
+export async function apiJson(path, opts = {}) {
+  const res = await apiFetch(path, opts);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || 'Request failed. Please try again.');
+  }
+  return res.json();
+}
+
+// ----------------------------------------------------------------------------
+// Auth
+// ----------------------------------------------------------------------------
+
+export async function signup(email, password, name) {
+  const data = await apiJson('/api/auth/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, name }),
+  });
+  setToken(data.access_token);
+  return data;
+}
+
+export async function login(email, password) {
+  const data = await apiJson('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  setToken(data.access_token);
+  return data;
+}
+
+export function logout() {
+  setToken(null);
+}
+
+export async function getMe() {
+  return apiJson('/api/auth/me');
+}
+
+export async function getDemoCreds() {
+  const res = await fetch(`${API_URL}/api/auth/demo`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+// ----------------------------------------------------------------------------
+// Jobs
+// ----------------------------------------------------------------------------
+
+export const listJobs = () => apiJson('/api/jobs');
+
+export function createJob(job) {
+  return apiJson('/api/jobs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(job),
+  });
+}
+
+export function deleteJob(id) {
+  return apiJson(`/api/jobs/${id}`, { method: 'DELETE' });
+}
+
+// ----------------------------------------------------------------------------
+// Dashboard / history
+// ----------------------------------------------------------------------------
+
+export const getDashboard = () => apiJson('/api/dashboard');
+export const listSessions = () => apiJson('/api/sessions');
+export const getSessionDetail = (id) => apiJson(`/api/sessions/${id}`);
+
+export async function downloadExport(sessionId, kind) {
+  // kind: 'csv' | 'xlsx' | 'pdf'
+  const suffix = kind === 'pdf' ? 'report.pdf' : kind === 'xlsx' ? 'export.xlsx' : 'export.csv';
+  const res = await apiFetch(`/api/sessions/${sessionId}/${suffix}`);
+  if (!res.ok) throw new Error('Export failed. Please try again.');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `screening-session-${sessionId}.${kind}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+// ----------------------------------------------------------------------------
+// Screening stream (SSE over fetch; carries the auth token + optional job_id)
+// ----------------------------------------------------------------------------
+
 /**
  * POST /api/screen/stream and parse the SSE event stream.
  * onEvent(evt) is called for every event. Resolves with the batch_complete event.
- * Note: EventSource can't POST multipart bodies, so we use fetch + ReadableStream.
  */
-export async function streamScreen(files, job, onEvent) {
+export async function streamScreen(files, job, onEvent, opts = {}) {
   const form = new FormData();
   files.forEach((f) => form.append('resumes', f));
   form.append('job', JSON.stringify(job));
+  if (opts.jobId) form.append('job_id', String(opts.jobId));
+  const headers = {};
+  const tok = getToken();
+  if (tok) headers['Authorization'] = `Bearer ${tok}`;
   let res;
   try {
-    res = await fetch(`${API_URL}/api/screen/stream`, { method: 'POST', body: form });
+    res = await fetch(`${API_URL}/api/screen/stream`, { method: 'POST', headers, body: form });
   } catch {
     throw new Error('Could not reach the screening service. Please check your connection and try again.');
+  }
+  if (res.status === 401) {
+    setToken(null);
+    const err = new Error('SESSION_EXPIRED');
+    err.sessionExpired = true;
+    throw err;
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -72,26 +204,24 @@ export async function streamScreen(files, job, onEvent) {
 }
 
 export async function setCandidateStatus(resume_id, status, notes = '', reject_reason = '') {
-  const res = await fetch(`${API_URL}/api/candidates/status`, {
+  return apiJson('/api/candidates/status', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ resume_id, status, notes, reject_reason }),
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || 'Could not save the status.');
-  }
-  return res.json();
 }
 
-export async function getCandidateStatuses() {
-  const res = await fetch(`${API_URL}/api/candidates/statuses`);
-  if (!res.ok) return {};
-  return res.json();
+export async function getCandidateStatuses(sessionId) {
+  const q = sessionId ? `?session_id=${sessionId}` : '';
+  try {
+    return await apiJson(`/api/candidates/statuses${q}`);
+  } catch {
+    return {};
+  }
 }
 
 export async function sendFeedback(analysis_id, helpful) {
-  const res = await fetch(`${API_URL}/api/feedback`, {
+  const res = await apiFetch('/api/feedback', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ analysis_id, verdict: helpful ? 'good_fit' : 'bad_fit' }),
