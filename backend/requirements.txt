@@ -1,0 +1,12 @@
+# CPU-only torch keeps the image small and fast to install
+--extra-index-url https://download.pytorch.org/whl/cpu
+fastapi
+uvicorn[standard]
+python-multipart
+pymupdf
+pdfplumber
+python-docx
+spacy
+scikit-learn
+sentence-transformers
+torch
