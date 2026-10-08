@@ -61,10 +61,9 @@ VITE_API_URL=http://localhost:8000 npm run dev
 
 ## Deploy
 
-- **Backend → Railway** from `backend/`: Nixpacks build pre-downloads the spaCy and
-  sentence-transformer models into the image (`nixpacks.toml`); start command
-  `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. Set `FRONTEND_URL` to the
-  Vercel origin (defaults to `*`).
+- **Backend → Railway** from `backend/`: Railpack build pre-downloads the spaCy and
+  sentence-transformer models into the image (`railpack.json` sets the start command
+  `uvicorn app.main:app --host 0.0.0.0 --port $PORT` and the model pre-download step).
 - **Frontend → Vercel** from `frontend/` (root directory = `frontend`);
   set `VITE_API_URL` to the live Railway URL in production env.
 
