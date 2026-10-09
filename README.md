@@ -100,10 +100,35 @@ VITE_API_URL=http://localhost:8000 npm run dev
 - Experience parsing is regex-based and approximate.
 - No ML training in v1: scoring is similarity + rules, no learned ranker.
 
+## Phase 2 — shipped
+
+- **Demo auth**: signup / login / logout with JWT sessions. Demo account
+  `demo@recruiter.com` / `demo1234` is seeded on startup and shown on the login page.
+  Clearly labelled as demo auth — not for real accounts.
+- **Persistent database**: Railway Postgres plugin (SQLAlchemy models:
+  users, jobs, screening_sessions, candidates, status_history, feedbacks).
+  `DATABASE_URL` is wired from the Postgres service; tables auto-create on startup.
+  All in-memory stores are gone — statuses, notes, jobs, sessions and feedback
+  survive backend redeploys (verified).
+- **Recruiter dashboard** (post-login landing): stat cards (resumes uploaded,
+  candidates processed, shortlisted, average match score), recent sessions,
+  score-distribution bar chart, "Start new screening" button.
+- **Saved job profiles**: create / list / delete; "Screen candidates" against any
+  saved job. Ad-hoc screenings auto-save their job so every run is linked.
+- **Screening history**: every batch saved with its ranking snapshot, re-viewable
+  read-only with exports.
+- **Exports**: per-session CSV, Excel (openpyxl) and PDF screening report (ReportLab)
+  — job title, date, ranking table, matched/missing skills per candidate.
+- The NLP pipeline is untouched: extraction → spaCy preprocessing → skill NER →
+  TF-IDF + MiniLM embeddings → weighted scoring (skills 50 / similarity 25 /
+  experience 15 / education 10) → evidence-only explanations, with the live
+  8-stage SSE timeline per resume during every screening run.
+- Bias rules kept: names, colleges and contact details never enter scoring;
+  every candidate starts "Screened"; scoring never auto-rejects; fairness note
+  stays visible in the UI and the PDF report.
+
 ## Roadmap (deferred)
 
-- Login / recruiter authentication and multi-user workspaces
-- Persistent database for candidates, statuses, notes and feedback
-- Dashboard charts (score distributions, funnel by status, skill-gap analytics)
-- CSV / Excel / PDF export of the shortlist
-- Screening history across batches
+- Learned ranker trained on recruiter feedback
+- Skill-gap analytics and funnel-by-status charts
+- OCR for scanned PDFs
