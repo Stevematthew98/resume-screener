@@ -41,15 +41,24 @@ export default function SkillGaps({ sessionId }) {
       <div style={{ width: '100%', height: 40 + rows.length * 34, maxHeight: 420 }}>
         <ResponsiveContainer>
           <BarChart data={rows} layout="vertical" margin={{ left: 8, right: 24, top: 4, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e6ebf4" />
-            <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }}
-              label={{ value: 'candidates missing', position: 'insideBottomRight', offset: -2, fontSize: 11 }} />
-            <YAxis type="category" dataKey="skill" width={140} tick={{ fontSize: 12 }} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#e9eef7" horizontal={false} />
+            <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12, fill: '#5d6c8f' }}
+              tickLine={false} axisLine={{ stroke: '#e4e9f4' }}
+              label={{ value: 'candidates missing', position: 'insideBottomRight', offset: -2, fontSize: 11, fill: '#93a1bd' }} />
+            <YAxis type="category" dataKey="skill" width={140} tick={{ fontSize: 12, fill: '#33415e', fontWeight: 600 }}
+              tickLine={false} axisLine={false} />
             <Tooltip
               formatter={(v, _n, item) => [`${v} of ${item.payload.total_candidates} candidates`, 'missing']}
-              contentStyle={{ borderRadius: 10, border: '1px solid #e6ebf4' }}
+              cursor={{ fill: 'rgba(217,119,6,.07)' }}
+              contentStyle={{
+                borderRadius: 12, border: '1px solid #e4e9f4',
+                boxShadow: '0 12px 28px -8px rgba(15,26,51,.18)',
+                fontSize: 13, fontWeight: 600,
+              }}
             />
-            <Bar dataKey="missing_count" name="candidates missing" fill="#d97706" radius={[0, 6, 6, 0]} barSize={18} />
+            <Bar dataKey="missing_count" name="candidates missing" fill="#d97706"
+              radius={[0, 8, 8, 0]} barSize={18}
+              background={{ fill: '#f7f2e9', radius: 8 }} />
           </BarChart>
         </ResponsiveContainer>
       </div>
