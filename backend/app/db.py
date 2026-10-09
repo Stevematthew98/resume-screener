@@ -31,7 +31,10 @@ Base = declarative_base()
 def get_db_url() -> str:
     url = os.getenv("DATABASE_URL", "").strip()
     if url:
-        # Railway Postgres plugin exposes postgresql:// — SQLAlchemy + psycopg2 is fine.
+        # Railway Postgres plugin exposes postgresql:// — pin the psycopg2 driver
+        # explicitly since SQLAlchemy 2.x otherwise looks for psycopg (v3).
+        if url.startswith("postgresql://"):
+            url = "postgresql+psycopg2://" + url[len("postgresql://"):]
         return url
     data_dir = "/data" if os.path.isdir("/data") else os.path.dirname(os.path.abspath(__file__))
     return f"sqlite:///{os.path.join(data_dir, 'resume_screener.db')}"
