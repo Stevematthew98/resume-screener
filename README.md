@@ -93,12 +93,10 @@ VITE_API_URL=http://localhost:8000 npm run dev
 
 ## Known limitations
 
-- Feedback and candidate-status stores are **in-memory** — lost on every backend
-  redeploy. Use a durable database before any real use.
-- No OCR: scanned/image PDFs with no text layer extract nothing.
 - Skill taxonomy is demo-grade (~200 entries); niche domains need a bigger list.
 - Experience parsing is regex-based and approximate.
-- No ML training in v1: scoring is similarity + rules, no learned ranker.
+- The learned ranker is a simple per-skill lift model, not a trained ML ranker —
+  it is honest about needing ≥5 mixed decisions before it activates.
 
 ## Phase 2 — shipped
 
@@ -129,6 +127,33 @@ VITE_API_URL=http://localhost:8000 npm run dev
 
 ## Roadmap (deferred)
 
-- Learned ranker trained on recruiter feedback
-- Skill-gap analytics and funnel-by-status charts
-- OCR for scanned PDFs
+- Funnel-by-status charts
+- Multi-user recruiter teams / roles
+
+## Phase 3 — shipped
+
+- **OCR for scanned PDFs**: PDFs whose extractable text is below a character
+  threshold are treated as scanned — pages are rendered to images and OCR'd
+  with Tesseract (`pytesseract`). The streaming timeline labels these honestly:
+  "Scanned document — text recovered with OCR (may contain errors)".
+  Deploy note: the backend now ships as a **Dockerfile** (Railway auto-detects
+  it) because Railpack cannot install the `tesseract-ocr` apt package.
+  `backend/railpack.json` was removed; the Dockerfile keeps the same behaviour
+  (model pre-downloads at build, HF caches, uvicorn on `$PORT`).
+- **Skill-gap analytics**: `GET /api/sessions/{id}/skill-gaps` and
+  `GET /api/jobs/{id}/skill-gaps` return the most-common missing required
+  skills with counts (`{skill, missing_count, total_candidates}`), aggregated
+  live from persisted candidates. The ranking/history view renders them as a
+  bar chart ("What this batch is missing").
+- **Learned ranker from feedback**: personalizes the skills-match component
+  from the recruiter's own recorded decisions (Shortlisted = positive,
+  Rejected = negative, plus linked helpful/not-helpful votes). Per-skill
+  *shortlist lift* = P(shortlisted | has skill) / P(shortlisted | lacks skill);
+  skills with lift ≥ 1.2 get a modest importance boost (capped). Requires ≥5
+  decisions with a mix of outcomes before activating — otherwise default
+  scoring is used and `GET /api/ranker/status` says so. Every influence is
+  disclosed in the candidate detail ("Adjusted because you shortlisted 3 of 4
+  candidates with Kubernetes"). The 50/25/15/10 structure stays explainable;
+  statuses are still human-only and scoring can never auto-reject.
+  Candidate detail also has 👍/👎 "Was this analysis helpful?" votes, linked
+  to the candidate for the ranker.

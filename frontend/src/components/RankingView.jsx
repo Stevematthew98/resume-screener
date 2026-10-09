@@ -1,4 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import SkillGaps from './SkillGaps';
+import { getRankerStatus, sendFeedback } from '../api';
 
 export const STATUS_META = {
   'New': { cls: 'st-new', label: 'New' },
@@ -74,8 +76,24 @@ function CandidateDetail({ candidate, statusInfo, onClose, onStatus, readOnly = 
   const [showReject, setShowReject] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+  const [voteMsg, setVoteMsg] = useState('');
+  const [voted, setVoted] = useState(null);
   const p = candidate.personal || {};
   const displayName = p.name || candidate.filename.replace(/\.[^.]+$/, '');
+  const personalization = candidate.personalization || {};
+
+  async function vote(helpful) {
+    setVoteMsg('');
+    try {
+      // resume_id doubles as the analysis key for batch candidates; the
+      // backend links the vote to this candidate for the learned ranker.
+      await sendFeedback(candidate.resume_id, helpful, candidate.resume_id);
+      setVoted(helpful);
+      setVoteMsg('Thanks — your vote helps tune future scores.');
+    } catch (e) {
+      setVoteMsg(e.message || 'Could not save your vote.');
+    }
+  }
 
   async function changeStatus(status) {
     if (status === 'Rejected' && !rejectReason.trim()) {
@@ -149,6 +167,19 @@ function CandidateDetail({ candidate, statusInfo, onClose, onStatus, readOnly = 
                 <li key={i}>{line}</li>
               ))}
             </ul>
+
+            {personalization.active && (
+              <div className="personal-note">
+                <strong>Tuned to your decisions.</strong> {personalization.note}
+                {(personalization.adjustments || []).length > 0 && (
+                  <ul>
+                    {personalization.adjustments.map((a) => (
+                      <li key={a.skill}>{a.note}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
 
             <h3>Score breakdown</h3>
             <div className="components">
@@ -238,6 +269,14 @@ function CandidateDetail({ candidate, statusInfo, onClose, onStatus, readOnly = 
                   placeholder="Private notes about this candidate…" />
               </label>
               <button className="btn-ghost" disabled={saving} onClick={saveNotes}>Save notes</button>
+              <div className="vote-row">
+                <span className="muted">Was this analysis helpful?</span>
+                <button type="button" className={`vote-btn ${voted === true ? 'voted' : ''}`}
+                  disabled={voted !== null} onClick={() => vote(true)} aria-label="Helpful">👍</button>
+                <button type="button" className={`vote-btn ${voted === false ? 'voted' : ''}`}
+                  disabled={voted !== null} onClick={() => vote(false)} aria-label="Not helpful">👎</button>
+                {voteMsg && <span className="muted">{voteMsg}</span>}
+              </div>
               {msg && <p className="muted" style={{ marginTop: 8 }}>{msg}</p>}
               {statusInfo.reject_reason && statusInfo.status === 'Rejected' && (
                 <p className="reject-note"><strong>Rejection reason:</strong> {statusInfo.reject_reason}</p>
@@ -266,6 +305,13 @@ export default function RankingView({ job, ranking, candidates, statuses, onSele
   const [minExpFilter, setMinExpFilter] = useState('');
   const [sortDir, setSortDir] = useState('desc');
   const [exporting, setExporting] = useState('');
+  const [ranker, setRanker] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    getRankerStatus().then((r) => { if (alive) setRanker(r); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   async function handleExport(kind) {
     if (!onExport || exporting) return;
@@ -306,6 +352,11 @@ export default function RankingView({ job, ranking, candidates, statuses, onSele
           {shortlisted > 0 && <> · <strong>{shortlisted} shortlisted</strong></>}
           . Click a row for the full candidate profile. Rankings assist — you decide.
         </p>
+        {ranker && ranker.active && (
+          <p className="ranker-pill" title={ranker.note}>
+            ✨ Scores tuned from your last {ranker.decisions} decisions
+          </p>
+        )}
         <div className="toolbar">
           <input className="toolbar-input" type="text" value={query}
             onChange={(e) => setQuery(e.target.value)} placeholder="🔍 Search by name or file…" />
@@ -384,6 +435,8 @@ export default function RankingView({ job, ranking, candidates, statuses, onSele
       {!readOnly && (
         <button className="cta cta-secondary" type="button" onClick={onRestart}>Screen another batch →</button>
       )}
+
+      {sessionId && <SkillGaps sessionId={sessionId} />}
     </div>
   );
 }

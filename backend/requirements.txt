@@ -6,6 +6,8 @@ python-multipart
 pymupdf
 pdfplumber
 python-docx
+pytesseract
+Pillow
 spacy
 scikit-learn
 sentence-transformers

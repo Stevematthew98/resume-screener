@@ -21,6 +21,7 @@ from .auth import (
     DEMO_PASSWORD,
     create_token,
     get_current_user,
+    get_optional_user,
     hash_password,
     seed_demo_user,
     user_public,
@@ -41,6 +42,7 @@ from .db import (
 )
 from .exports import build_csv, build_pdf, build_xlsx
 from .pipeline import STAGE_ORDER, analyze_resume, ensure_models
+from .ranker import get_personalization
 from .screening import normalize_job, ranking_row, screen_one_resume
 
 app = FastAPI(title="Resume Screener API", version="2.0.0")
@@ -61,6 +63,7 @@ CANDIDATE_STATUSES = ("New", "Screened", "Shortlisted", "Under Review", "Rejecte
 class FeedbackIn(BaseModel):
     analysis_id: str
     verdict: str  # "good_fit" | "bad_fit"
+    resume_id: Optional[str] = None  # links the vote to a screened candidate
 
 
 class CandidateStatusIn(BaseModel):
@@ -181,17 +184,27 @@ async def analyze(
 
 
 @app.post("/api/feedback")
-def feedback(item: FeedbackIn):
+def feedback(item: FeedbackIn, user: Optional[User] = Depends(get_optional_user)):
     if item.verdict not in ("good_fit", "bad_fit"):
         raise HTTPException(status_code=400, detail="verdict must be 'good_fit' or 'bad_fit'.")
     db = get_session()
     try:
-        db.add(Feedback(analysis_id=item.analysis_id, verdict=item.verdict))
+        candidate_id = None
+        if item.resume_id and user is not None:
+            # Link the vote to the candidate only when we can verify ownership.
+            cand = (db.query(Candidate).join(ScreeningSession)
+                      .filter(Candidate.resume_id == item.resume_id,
+                              ScreeningSession.user_id == user.id).first())
+            if cand is not None:
+                candidate_id = cand.id
+        db.add(Feedback(analysis_id=item.analysis_id, verdict=item.verdict,
+                        user_id=user.id if user else None, candidate_id=candidate_id))
         db.commit()
         count = db.query(Feedback).filter(Feedback.analysis_id == item.analysis_id).count()
     finally:
         db.close()
-    return {"analysis_id": item.analysis_id, "verdicts_recorded": count}
+    return {"analysis_id": item.analysis_id, "verdicts_recorded": count,
+            "linked_candidate": candidate_id is not None}
 
 
 @app.get("/api/feedback/stats")
@@ -389,6 +402,9 @@ async def screen_stream(
     db.commit()
     db.refresh(session)
     session_id = session.id
+    # Learned ranker: computed once from this recruiter's recorded decisions
+    # BEFORE the batch, so the batch itself can't influence its own scores.
+    personalization = get_personalization(db, user.id)
     db.close()
 
     items: list[tuple[str, bytes]] = []
@@ -410,7 +426,8 @@ async def screen_stream(
             yield _sse({"type": "resume_start", "resume_id": resume_id,
                         "filename": filename, "index": idx, "total": total})
             try:
-                for kind, payload in screen_one_resume(data, filename, job_spec, resume_id):
+                for kind, payload in screen_one_resume(data, filename, job_spec,
+                                                       resume_id, personalization):
                     if kind == "stage":
                         yield _sse({"type": "stage", "resume_id": resume_id,
                                     "filename": filename, "index": idx, "total": total,
@@ -583,6 +600,73 @@ def get_session_detail(session_id: int, user: User = Depends(get_current_user)):
             "ranking": ranking,
             "candidates": {c.resume_id: candidate_public(c) for c in cands},
         }
+    finally:
+        db.close()
+
+
+# ----------------------------------------------------------------------------
+# Learned ranker status
+# ----------------------------------------------------------------------------
+
+@app.get("/api/ranker/status")
+def ranker_status(user: User = Depends(get_current_user)):
+    """How the learned ranker is behaving for this recruiter.
+
+    Personalization activates after enough recorded decisions; until then
+    default scoring is used and the response says so.
+    """
+    db = get_session()
+    try:
+        return get_personalization(db, user.id)
+    finally:
+        db.close()
+
+
+# ----------------------------------------------------------------------------
+# Skill-gap analytics
+# ----------------------------------------------------------------------------
+
+def _skill_gap_aggregate(candidates) -> dict:
+    """Most-common missing required skills across a set of candidates."""
+    from collections import Counter
+    counter: Counter = Counter()
+    for c in candidates:
+        for s in c.missing_skills or []:
+            counter[s] += 1
+    total = len(candidates)
+    return {
+        "total_candidates": total,
+        "gaps": [
+            {"skill": skill, "missing_count": count, "total_candidates": total}
+            for skill, count in counter.most_common()
+        ],
+    }
+
+
+@app.get("/api/sessions/{session_id}/skill-gaps")
+def session_skill_gaps(session_id: int, user: User = Depends(get_current_user)):
+    """Aggregate missing-skill counts for one screening session."""
+    db = get_session()
+    try:
+        s = _owned_session(db, session_id, user)
+        return {"session_id": session_id, **_skill_gap_aggregate(s.candidates or [])}
+    finally:
+        db.close()
+
+
+@app.get("/api/jobs/{job_id}/skill-gaps")
+def job_skill_gaps(job_id: int, user: User = Depends(get_current_user)):
+    """Aggregate missing-skill counts across all sessions of a saved job."""
+    db = get_session()
+    try:
+        job = db.query(Job).filter(Job.id == job_id, Job.user_id == user.id).first()
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found.")
+        cands = (db.query(Candidate).join(ScreeningSession)
+                   .filter(ScreeningSession.job_id == job_id,
+                           ScreeningSession.user_id == user.id).all())
+        return {"job_id": job_id, "job_title": job.title,
+                **_skill_gap_aggregate(cands)}
     finally:
         db.close()
 

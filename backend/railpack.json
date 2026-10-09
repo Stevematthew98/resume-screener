@@ -1,1 +1,0 @@
-{"$schema":"https://schema.railpack.com","deploy":{"startCommand":"uvicorn app.main:app --host 0.0.0.0 --port $PORT","variables":{"HF_HOME":"/app/models","SENTENCE_TRANSFORMERS_HOME":"/app/models","TRANSFORMERS_CACHE":"/app/models"}},"steps":{"build":{"commands":["...","python -m spacy download en_core_web_sm","python download_models.py"]}}}

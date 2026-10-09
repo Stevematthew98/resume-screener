@@ -163,23 +163,63 @@ def split_sections(text: str) -> dict:
     return sections
 
 
-def extract_text_pdf(data: bytes) -> tuple[str, str]:
-    """PyMuPDF primary; pdfplumber fallback. Returns (text, method)."""
+OCR_CHAR_THRESHOLD = 50
+
+
+def extract_text_pdf(data: bytes) -> tuple[str, str, bool]:
+    """PyMuPDF primary; pdfplumber fallback; Tesseract OCR for scanned PDFs.
+
+    Returns (text, method, ocr_used). A PDF whose extractable text is below
+    the char threshold is treated as scanned and OCR'd.
+    """
     text = ""
     try:
         with pymupdf.open(stream=data, filetype="pdf") as doc:
             text = "\n".join(page.get_text() for page in doc)
     except Exception:
         text = ""
-    if len(text.strip()) < 50:
+    if len(text.strip()) < OCR_CHAR_THRESHOLD:
         try:
             with pdfplumber.open(io.BytesIO(data)) as pdf:
                 text = "\n".join(page.extract_text() or "" for page in pdf.pages)
             method = "pdfplumber (fallback)"
         except Exception:
             method = "pymupdf (failed)"
-        return text or "", method
-    return text, "pymupdf"
+        if len((text or "").strip()) >= OCR_CHAR_THRESHOLD:
+            return text or "", method, False
+        # Scanned document: recover text with OCR.
+        ocr_text, ocr_note = extract_text_pdf_ocr(data)
+        if ocr_text.strip():
+            return ocr_text, "tesseract ocr", True
+        return text or "", f"{method}; {ocr_note}", False
+    return text, "pymupdf", False
+
+
+def extract_text_pdf_ocr(data: bytes) -> tuple[str, str]:
+    """Render PDF pages to images and OCR them with Tesseract.
+
+    Returns (text, note). Never raises for a missing binary — the caller
+    falls back to whatever text was extractable.
+    """
+    try:
+        import pytesseract
+        from PIL import Image
+    except Exception:
+        return "", "ocr unavailable (ocr libraries missing)"
+    try:
+        pytesseract.get_tesseract_version()
+    except Exception:
+        return "", "ocr unavailable (tesseract binary missing)"
+    try:
+        texts = []
+        with pymupdf.open(stream=data, filetype="pdf") as doc:
+            for page in doc:
+                pix = page.get_pixmap(dpi=200)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                texts.append(pytesseract.image_to_string(img))
+        return "\n".join(texts), "tesseract ocr"
+    except Exception:
+        return "", "ocr failed"
 
 
 def extract_text_docx(data: bytes) -> str:
@@ -317,15 +357,16 @@ def run_pipeline_stages(file_bytes: bytes, filename: str, job_description: str,
     # ---- Step 2: extraction --------------------------------------------------
     jd_text = (job_description or "").strip()
     if ext == "pdf":
-        raw_text, method = extract_text_pdf(file_bytes)
+        raw_text, method, ocr_used = extract_text_pdf(file_bytes)
     elif ext in ("docx", "doc"):
-        raw_text, method = extract_text_docx(file_bytes), "python-docx"
+        raw_text, method, ocr_used = extract_text_docx(file_bytes), "python-docx", False
     else:
-        raw_text, method = "", "unsupported"
+        raw_text, method, ocr_used = "", "unsupported", False
     raw_text = raw_text.strip()
     sections = split_sections(raw_text) if raw_text else {k: "" for k in SECTION_NAMES}
     step2 = {
         "extraction_method": method,
+        "ocr_used": ocr_used,
         "chars_extracted": len(raw_text),
         "words_extracted": len(raw_text.split()),
         "sections_found": [k for k, v in sections.items() if v.strip()],
@@ -432,7 +473,8 @@ def run_pipeline_stages(file_bytes: bytes, filename: str, job_description: str,
         "fairness_note": ("Names, colleges, and other identity markers are not used in scoring. "
                           "Emails and phone numbers are redacted before any data is echoed. "
                           "Training-free similarity scoring avoids learning historical hiring bias."),
-        "limitations": ("Demo-grade skill taxonomy (~200 skills); no OCR for scanned PDFs; "
+        "limitations": ("Demo-grade skill taxonomy (~200 skills); scanned PDFs are "
+                        "OCR'd but unusual layouts may misread; "
                         "experience parsing is regex-based and approximate."),
     }
     yield ("step6_transparency", step6)
@@ -488,6 +530,9 @@ def stage_summary(stage_key: str, out: dict) -> str:
         if stage_key == "step2_extraction":
             words = out.get("words_extracted", 0)
             nsec = len(out.get("sections_found", []))
+            if out.get("ocr_used"):
+                return (f"Scanned document — text recovered with OCR, {words:,} words "
+                        "(may contain errors)")
             return f"{words:,} words extracted from {nsec} sections"
         if stage_key == "step3_preprocessing":
             n = out.get("skills_count", 0)

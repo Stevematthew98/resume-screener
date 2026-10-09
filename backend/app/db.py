@@ -149,6 +149,7 @@ class Feedback(Base):
     analysis_id = Column(String(128), nullable=False, index=True)
     verdict = Column(String(32), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    candidate_id = Column(Integer, ForeignKey("candidates.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -156,9 +157,26 @@ class Feedback(Base):
 # Init + helpers
 # ----------------------------------------------------------------------------
 
+def _migrate() -> None:
+    """Additive migrations for tables created by earlier releases.
+    create_all() never alters existing tables, so new columns are added here.
+    """
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        if DB_URL.startswith("sqlite"):
+            cols = [r[1] for r in conn.execute(
+                text("PRAGMA table_info(feedbacks)")).fetchall()]
+            if "candidate_id" not in cols:
+                conn.execute(text("ALTER TABLE feedbacks ADD COLUMN candidate_id INTEGER"))
+        else:
+            conn.execute(text(
+                "ALTER TABLE feedbacks ADD COLUMN IF NOT EXISTS candidate_id INTEGER"))
+
+
 def init_db() -> None:
     """Create tables if missing. Safe to call on every startup."""
     Base.metadata.create_all(engine)
+    _migrate()
 
 
 def get_session():

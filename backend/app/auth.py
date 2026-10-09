@@ -93,6 +93,23 @@ def get_current_user(creds: HTTPAuthorizationCredentials = Depends(_bearer)) -> 
     return user
 
 
+def get_optional_user(creds: HTTPAuthorizationCredentials = Depends(_bearer)):
+    """Current user when a valid token is present, else None. Never raises —
+    for endpoints (like feedback) that work signed-in or anonymously."""
+    try:
+        if creds is None or not creds.credentials:
+            return None
+        payload = jwt.decode(creds.credentials, _jwt_secret(), algorithms=[JWT_ALGORITHM])
+        user_id = int(payload["sub"])
+    except Exception:
+        return None
+    db = get_session()
+    try:
+        return db.query(User).filter(User.id == user_id).first()
+    finally:
+        db.close()
+
+
 def user_public(u: User) -> dict:
     return {"id": u.id, "email": u.email, "name": u.name,
             "created_at": u.created_at.isoformat() if u.created_at else ""}

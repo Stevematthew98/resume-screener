@@ -220,14 +220,26 @@ export async function getCandidateStatuses(sessionId) {
   }
 }
 
-export async function sendFeedback(analysis_id, helpful) {
+export async function sendFeedback(analysis_id, helpful, resume_id = null) {
   const res = await apiFetch('/api/feedback', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ analysis_id, verdict: helpful ? 'good_fit' : 'bad_fit' }),
+    body: JSON.stringify({ analysis_id, verdict: helpful ? 'good_fit' : 'bad_fit', resume_id }),
   });
   if (!res.ok) throw new Error('Could not save feedback.');
   return res.json();
+}
+
+export async function getSkillGaps(sessionId) {
+  return apiJson(`/api/sessions/${sessionId}/skill-gaps`);
+}
+
+export async function getRankerStatus() {
+  try {
+    return await apiJson('/api/ranker/status');
+  } catch {
+    return { active: false, decisions: 0, note: '' };
+  }
 }
 
 export const API_BASE = API_URL;

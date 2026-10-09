@@ -23,6 +23,7 @@ from .pipeline import (
     run_pipeline_stages,
     stage_summary,
 )
+from .ranker import skill_weights
 
 # ----------------------------------------------------------------------------
 # Job spec normalization
@@ -68,26 +69,46 @@ def normalize_job(job: dict) -> dict:
 # Scoring components (each returns value 0..1 plus grounded evidence)
 # ----------------------------------------------------------------------------
 
-def _skills_component(resume_skills: list, required: list, preferred: list, jd_skills: list):
-    """50% — required-skill coverage. Falls back to JD-extracted skills."""
+def _skills_component(resume_skills: list, required: list, preferred: list,
+                      jd_skills: list, personalization: dict = None):
+    """50% — required-skill coverage. Falls back to JD-extracted skills.
+
+    When personalization is active, basis skills the recruiter has favoured
+    get a modest importance boost (see ranker.py); every boost is disclosed.
+    """
     basis = required or jd_skills
     basis_note = "required skills you listed" if required else "skills detected in the job description"
     if not basis:
         return {
             "value": 0.0, "basis": basis_note, "matched": [], "missing": [],
+            "personalization": {"active": False, "adjustments": [], "note": ""},
             "note": "No skills to compare against — the job lists no skills and none were detected.",
         }
     rset, bset = set(resume_skills), set(basis)
     matched = sorted(rset & bset)
     missing = sorted(bset - rset)
-    value = len(matched) / len(bset)
+    adjustments = []
+    personalization_note = ""
+    if personalization and personalization.get("active"):
+        weights, adjustments = skill_weights(basis, personalization.get("skill_boosts"))
+        denom = sum(weights[s] for s in basis) or 1.0
+        value = sum(weights[s] for s in matched) / denom
+        personalization_note = personalization.get("note", "")
+    else:
+        value = len(matched) / len(bset)
     pref_matched = sorted(rset & set(preferred)) if preferred else []
     return {
-        "value": round(value, 4),
+        "value": round(max(0.0, min(1.0, value)), 4),
         "basis": basis_note,
         "matched": matched,
         "missing": missing,
         "preferred_matched": pref_matched,
+        "personalization": {
+            "active": bool(adjustments),
+            "decisions": (personalization or {}).get("decisions", 0),
+            "adjustments": adjustments,
+            "note": personalization_note,
+        },
         "note": f"{len(matched)} of {len(bset)} {basis_note} found in the resume.",
     }
 
@@ -184,7 +205,8 @@ FAIRNESS_NOTE = (
 )
 
 
-def build_candidate(resume_id: str, filename: str, job: dict, stages: dict) -> dict:
+def build_candidate(resume_id: str, filename: str, job: dict, stages: dict,
+                    personalization: dict = None) -> dict:
     s3 = stages["step3_preprocessing"]
     s4 = stages["step4_vectors"]
     s5 = stages["step5_matching"]
@@ -197,7 +219,7 @@ def build_candidate(resume_id: str, filename: str, job: dict, stages: dict) -> d
     personal = s3.get("personal", {"name": "", "email": "", "phone": ""})
 
     skills = _skills_component(resume_skills, job["required_skills"],
-                               job["preferred_skills"], jd_skills)
+                               job["preferred_skills"], jd_skills, personalization)
     jd_sim = _jd_similarity_component(s4)
     exp = _experience_component(exp_years, job["min_experience_years"])
     edu = _education_component(degrees, job["education_requirements"])
@@ -235,6 +257,26 @@ def build_candidate(resume_id: str, filename: str, job: dict, stages: dict) -> d
         verdict = (f"Overall {score:.0%} — not a strong match for this role as described. "
                    "The ranking assists you; the decision is yours.")
     explanation.append(verdict)
+
+    # Learned-ranker disclosure: every personalization influence is stated
+    # in plain language, grounded in the recruiter's own recorded decisions.
+    personalization_info = {
+        "active": False,
+        "decisions": 0,
+        "note": "",
+        "adjustments": [],
+    }
+    pers = skills.get("personalization") or {}
+    if pers.get("active") and pers.get("adjustments"):
+        personalization_info = {
+            "active": True,
+            "decisions": pers.get("decisions", 0),
+            "note": pers.get("note", ""),
+            "adjustments": pers["adjustments"],
+        }
+        explanation.append("Personalized to your decisions: " + pers.get("note", ""))
+        for adj in pers["adjustments"]:
+            explanation.append("• " + adj["note"])
 
     sections_text = s2.get("sections_text", {})
 
@@ -279,6 +321,7 @@ def build_candidate(resume_id: str, filename: str, job: dict, stages: dict) -> d
         },
         "meets_experience_requirement": exp_years >= job["min_experience_years"],
         "fairness_note": FAIRNESS_NOTE,
+        "personalization": personalization_info,
         "created_at": stages["step7_result"].get("created_at", ""),
     }
 
@@ -296,7 +339,8 @@ def ranking_row(candidate: dict) -> dict:
     }
 
 
-def screen_one_resume(file_bytes: bytes, filename: str, job: dict, resume_id: str):
+def screen_one_resume(file_bytes: bytes, filename: str, job: dict, resume_id: str,
+                      personalization: dict = None):
     """Generator yielding ('stage', {...}) per completed stage, then
     ('candidate', candidate_dict). Shares the exact pipeline as /api/analyze."""
     stages = {}
@@ -310,4 +354,4 @@ def screen_one_resume(file_bytes: bytes, filename: str, job: dict, resume_id: st
             "summary": stage_summary(key, out),
             "detail": out,
         })
-    yield ("candidate", build_candidate(resume_id, filename, job, stages))
+    yield ("candidate", build_candidate(resume_id, filename, job, stages, personalization))

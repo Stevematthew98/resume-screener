@@ -605,3 +605,32 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .back-link:hover { text-decoration: underline; }
 
 .export-group { display: inline-flex; gap: 6px; margin-left: 6px; }
+
+/* Phase 3: personalization disclosure, feedback votes, ranker pill */
+.personal-note {
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 12px 0;
+  font-size: 13px;
+  color: #0c4a6e;
+}
+.personal-note ul { margin: 8px 0 0; padding-left: 18px; }
+.personal-note li { margin: 4px 0; }
+.vote-row {
+  display: flex; align-items: center; gap: 8px; margin-top: 14px;
+  padding-top: 12px; border-top: 1px dashed var(--line);
+}
+.vote-btn {
+  border: 1px solid var(--line); background: #fff; border-radius: 10px;
+  font-size: 16px; padding: 4px 10px; cursor: pointer; transition: all .15s;
+}
+.vote-btn:hover:not(:disabled) { border-color: #0ea5e9; transform: translateY(-1px); }
+.vote-btn:disabled { cursor: default; opacity: .7; }
+.vote-btn.voted { border-color: #0e9f6e; background: #ecfdf5; }
+.ranker-pill {
+  display: inline-block; margin: 6px 0 0; padding: 6px 12px;
+  background: #f0f9ff; border: 1px solid #bae6fd; color: #0369a1;
+  border-radius: 999px; font-size: 13px; font-weight: 600;
+}
