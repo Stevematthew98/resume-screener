@@ -21,7 +21,7 @@ import Backdrop from './components/Backdrop';import HistoryView from './componen
 import JobsView from './components/JobsView';
 import JobSetup from './components/JobSetup';
 import Login from './components/Login';
-import ScreeningView from './components/ScreeningView';
+import NlpStudio from './components/NlpStudio';
 import RankingView, { CandidateDetail } from './components/RankingView';
 
 const EMPTY_JOB = {
@@ -76,6 +76,8 @@ export default function App() {
   const [currentFile, setCurrentFile] = useState('');
   const [pipes, setPipes] = useState([]);
   const [screenError, setScreenError] = useState('');
+  const [screeningStartedAt, setScreeningStartedAt] = useState(null);
+  const [batchComplete, setBatchComplete] = useState(false);
 
   const [ranking, setRanking] = useState([]);
   const [candidates, setCandidates] = useState({});
@@ -165,7 +167,7 @@ export default function App() {
       return;
     }
 
-    setPipes(files.map((f, i) => ({ key: `f${i}`, filename: f.name, resume_id: null, stages: blankStages(), status: 'queued' })));
+    setPipes(files.map((f, i) => ({ key: `f${i}`, filename: f.name, resume_id: null, stages: blankStages(), status: 'queued', startedAt: null })));
     setTotal(files.length);
     setDoneCount(0);
     setCurrentFile('');
@@ -174,6 +176,8 @@ export default function App() {
     setCandidates({});
     setStatuses({});
     setSessionId(null);
+    setScreeningStartedAt(Date.now());
+    setBatchComplete(false);
     setView('screening');
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -191,6 +195,7 @@ export default function App() {
             ...p,
             resume_id: evt.resume_id,
             status: 'running',
+            startedAt: Date.now(),
             stages: p.stages.map((s, i) => (i === 0 ? { ...s, status: 'active' } : s)),
           }));
         } else if (evt.type === 'stage') {
@@ -198,8 +203,8 @@ export default function App() {
           updatePipe(key, (p) => ({
             ...p,
             stages: p.stages.map((s) => {
-              if (s.key === evt.stage) return { ...s, status: 'done', summary: evt.summary, detail: evt.detail || null };
-              if (s.status === 'active') return { ...s, status: 'done', summary: s.summary };
+              if (s.key === evt.stage) return { ...s, status: 'done', summary: evt.summary, detail: evt.detail || null, completedAt: Date.now() };
+              if (s.status === 'active') return { ...s, status: 'done', summary: s.summary, completedAt: s.completedAt || Date.now() };
               return s;
             }).map((s, i, arr) => {
               const doneIdx = arr.findIndex((x) => x.key === evt.stage);
@@ -226,6 +231,7 @@ export default function App() {
           setDoneCount((c) => c + 1);
         } else if (evt.type === 'batch_complete') {
           setRanking(evt.ranking || []);
+          setBatchComplete(true);
           if (evt.session_id) setSessionId(evt.session_id);
           getCandidateStatuses(evt.session_id).then((sv) => {
             setStatuses((prev) => ({ ...sv, ...prev }));
@@ -401,8 +407,10 @@ export default function App() {
       )}
 
       {view === 'screening' && (
-        <ScreeningView total={total} doneCount={doneCount} currentFile={currentFile}
-          resumes={pipes} error={screenError} />
+        <NlpStudio total={total} doneCount={doneCount} currentFile={currentFile}
+          resumes={pipes} candidates={candidates} ranking={ranking} job={job}
+          error={screenError} startedAt={screeningStartedAt} batchComplete={batchComplete}
+          onViewRanking={() => { setView('ranking'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
       )}
 
       {view === 'ranking' && (
