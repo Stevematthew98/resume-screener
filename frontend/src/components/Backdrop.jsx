@@ -143,12 +143,14 @@ export default function Backdrop() {
     raf = requestAnimationFrame(step);
     window.addEventListener('resize', resize);
     window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('mousemove', onMove, { passive: true });
     document.documentElement.addEventListener('pointerleave', onLeave);
     document.addEventListener('visibilitychange', onVis);
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
       window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('mousemove', onMove);
       document.documentElement.removeEventListener('pointerleave', onLeave);
       document.removeEventListener('visibilitychange', onVis);
     };
