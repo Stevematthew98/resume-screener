@@ -716,6 +716,84 @@ textarea { resize: vertical; min-height: 90px; }
 .pipe-body { padding: 0 20px 18px; border-top: 1px solid var(--border-soft); }
 .screen-note { margin-top: 18px; font-size: 13px; color: var(--text-3); max-width: 640px; }
 
+/* --- Screening: Part 1 · Live pipeline stepper -------------------------------- */
+.resume-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 20px; }
+.resume-tab {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12.5px; font-weight: 500; color: var(--text-2);
+  background: #fff; border: 1px solid var(--border); border-radius: 99px;
+  padding: 7px 14px; cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  max-width: 220px;
+}
+.resume-tab:hover { border-color: rgba(83, 109, 254, 0.4); }
+.resume-tab.active { border-color: var(--brand); color: var(--brand-ink); background: rgba(83, 109, 254, 0.07); font-weight: 600; }
+.tab-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--muted); }
+.tab-dot.running { background: var(--brand); animation: pulse 1.4s ease infinite; }
+.tab-dot.done { background: var(--green); }
+.tab-dot.error { background: var(--red); }
+.stepper { display: flex; align-items: flex-start; overflow-x: auto; padding: 12px 4px 6px; scrollbar-width: thin; }
+.step-node { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1 0 84px; min-width: 84px; }
+.step-node-dot {
+  width: 44px; height: 44px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 14px; font-weight: 600;
+  background: #F1F3F7; color: var(--text-3); border: 2px solid var(--border);
+  transition: all 0.3s ease;
+}
+.step-node.pending .step-node-dot { opacity: 0.75; }
+.step-node.active .step-node-dot {
+  background: rgba(83, 109, 254, 0.1); border-color: var(--brand); color: var(--brand-ink);
+  box-shadow: 0 0 0 6px rgba(83, 109, 254, 0.12);
+  animation: pulse 1.6s ease infinite;
+}
+.step-node.done .step-node-dot { background: rgba(22, 165, 121, 0.12); border-color: var(--green); color: var(--green-ink); }
+.step-check { font-size: 18px; font-weight: 700; }
+.step-spinner {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2.5px solid rgba(83, 109, 254, 0.25); border-top-color: var(--brand);
+  animation: spin 0.9s linear infinite;
+}
+.step-spinner.inline { display: inline-block; width: 13px; height: 13px; border-width: 2px; vertical-align: -2px; margin-right: 6px; }
+.step-node-label { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.05em; color: var(--text-3); text-align: center; }
+.step-node.active .step-node-label { color: var(--brand-ink); }
+.step-node.done .step-node-label { color: var(--text-2); }
+.step-link { flex: 1 0 20px; min-width: 20px; height: 2px; background: var(--line); margin-top: 22px; border-radius: 2px; position: relative; overflow: hidden; }
+.step-link-fill { position: absolute; inset: 0; background: var(--green); transform: scaleX(0); transform-origin: left; transition: transform 0.5s ease; }
+.step-link.filled .step-link-fill { transform: scaleX(1); }
+.step-link.live .step-link-fill { background: var(--brand); animation: linkflow 1.2s ease-in-out infinite; }
+@keyframes linkflow { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+.stepper-status { margin-top: 14px; font-size: 13.5px; color: var(--text-2); }
+.stepper-status strong { color: var(--text); }
+
+/* --- Screening: Part 2 · Stage detail cards ------------------------------------ */
+.stage-detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; margin-top: 14px; }
+.stage-detail-card { transition: border-color 0.3s ease, box-shadow 0.3s ease; }
+.stage-detail-card.active { border-color: rgba(83, 109, 254, 0.45); box-shadow: 0 0 0 4px rgba(83, 109, 254, 0.08); }
+.stage-detail-card.done { border-color: rgba(22, 165, 121, 0.25); }
+.stage-detail-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.stage-detail-n { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--brand-ink); }
+.stage-detail-title { font-weight: 600; font-size: 14px; flex: 1; }
+.stage-badge {
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 99px; flex-shrink: 0;
+}
+.stage-badge.done { background: rgba(22, 165, 121, 0.12); color: var(--green-ink); }
+.stage-badge.active { background: rgba(83, 109, 254, 0.12); color: var(--brand-ink); animation: pulse 1.6s ease infinite; }
+.stage-badge.pending { background: #F1F3F7; color: var(--text-3); }
+.stage-summary { font-size: 13px; color: var(--text-2); margin: 0 0 10px; line-height: 1.5; }
+.detail-rows { display: flex; flex-direction: column; gap: 7px; border-top: 1px solid var(--border-soft); padding-top: 10px; }
+.drow { display: flex; gap: 12px; align-items: flex-start; font-size: 12.5px; }
+.dkey { font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: var(--text-3); min-width: 108px; flex-shrink: 0; padding-top: 1px; }
+.dval { color: var(--text); word-break: break-word; }
+.dval.dim { color: var(--text-3); }
+.chip-row { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip {
+  font-size: 11.5px; background: rgba(83, 109, 254, 0.08); color: var(--brand-ink);
+  border: 1px solid rgba(83, 109, 254, 0.18); border-radius: 6px; padding: 2px 8px; white-space: nowrap;
+}
+.chip.more { background: #F1F3F7; border-color: var(--border); color: var(--text-3); }
+
 /* Timeline */
 .timeline, .timeline-compact { list-style: none; margin: 14px 0 0; padding: 0; }
 .tl-item { display: flex; gap: 14px; position: relative; padding-bottom: 18px; }

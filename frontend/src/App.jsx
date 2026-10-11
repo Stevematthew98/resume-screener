@@ -198,7 +198,7 @@ export default function App() {
           updatePipe(key, (p) => ({
             ...p,
             stages: p.stages.map((s) => {
-              if (s.key === evt.stage) return { ...s, status: 'done', summary: evt.summary };
+              if (s.key === evt.stage) return { ...s, status: 'done', summary: evt.summary, detail: evt.detail || null };
               if (s.status === 'active') return { ...s, status: 'done', summary: s.summary };
               return s;
             }).map((s, i, arr) => {

@@ -33,7 +33,7 @@ export const STAGE_LABELS = {
 };
 
 export function blankStages() {
-  return STAGE_ORDER.map((key) => ({ key, label: STAGE_LABELS[key], status: 'pending', summary: '' }));
+  return STAGE_ORDER.map((key) => ({ key, label: STAGE_LABELS[key], status: 'pending', summary: '', detail: null }));
 }
 
 // ----------------------------------------------------------------------------
