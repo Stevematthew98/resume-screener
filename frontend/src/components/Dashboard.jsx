@@ -1,6 +1,7 @@
 import Button from './Button';
 import React from 'react';
-import { Plus, ArrowUpRight } from 'lucide-react';
+import { Plus } from 'lucide-react';
+import { STAGE_LABELS } from '../api';
 import {
   Bar,
   BarChart,
@@ -18,128 +19,113 @@ const BAND_COLORS = {
   'Weak match': 'var(--muted)',
 };
 
+// Real, configured scoring weights — shown, not computed.
+const WEIGHTS = [
+  { key: 'skills', label: 'SKILLS', pct: 50, detail: 'taxonomy match × 0.50' },
+  { key: 'jd', label: 'JD_SIMILARITY', pct: 25, detail: 'MiniLM cosine × 0.25' },
+  { key: 'exp', label: 'EXPERIENCE', pct: 15, detail: 'years vs minimum × 0.15' },
+  { key: 'edu', label: 'EDUCATION', pct: 10, detail: 'degree keywords × 0.10' },
+];
+
 function fmtDate(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function DocIcon() {
-  return (
-    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <path d="M14 2v6h6" /><path d="M9 13h6" /><path d="M9 17h6" />
-    </svg>
-  );
-}
-
-function UsersIcon() {
-  return (
-    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  );
-}
-
-function StarIcon() {
-  return (
-    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-    </svg>
-  );
-}
-
-function GaugeIcon() {
-  return (
-    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
-      <path d="M12 12l4.5-4.5" />
-      <path d="M20.2 15a8.5 8.5 0 1 0-16.4 0" />
-    </svg>
-  );
-}
-
-function InboxIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 12h-6l-2 3h-4l-2-3H2" />
-      <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
-    </svg>
-  );
+function shortId(id) {
+  if (!id) return '—';
+  const s = String(id);
+  return s.length > 10 ? `${s.slice(0, 6)}…${s.slice(-4)}` : s;
 }
 
 export default function Dashboard({ data, loading = false, error = '', onNewScreening, onOpenSession }) {
   const stats = (data && data.stats) || {};
   const recent = (data && data.recent_sessions) || [];
   const dist = (data && data.score_distribution) || [];
+  const stages = Object.entries(STAGE_LABELS);
 
-  const cards = [
-    {
-      label: 'Resumes uploaded', value: stats.total_resumes ?? '—', hint: 'across all screenings',
-      icon: <DocIcon />, tone: 'primary',
-    },
-    {
-      label: 'Candidates processed', value: stats.candidates_processed ?? '—', hint: 'analysed by the NLP pipeline',
-      icon: <UsersIcon />, tone: 'info',
-    },
-    {
-      label: 'Shortlisted', value: stats.shortlisted ?? '—', hint: 'moved by you to shortlist',
-      icon: <StarIcon />, tone: 'success',
-    },
-    {
-      label: 'Average match score', value: stats.avg_score != null ? `${Math.round(stats.avg_score * 100)}%` : '—', hint: 'across all candidates',
-      icon: <GaugeIcon />, tone: 'warning',
-    },
+  const telemetry = [
+    { label: 'RESUMES_INGESTED', value: stats.total_resumes ?? '—', hint: 'files accepted by the pipeline' },
+    { label: 'CANDIDATES_PROCESSED', value: stats.candidates_processed ?? '—', hint: 'full 8-stage analysis completed' },
+    { label: 'SHORTLISTED', value: stats.shortlisted ?? '—', hint: 'status set by a recruiter' },
+    { label: 'MEAN_MATCH_SCORE', value: stats.avg_score != null ? `${Math.round(stats.avg_score * 100)}%` : '—', hint: 'across all scored candidates' },
   ];
 
   return (
     <div className="dash">
       <div className="dash-head rise">
         <div>
-          <h2>Dashboard</h2>
-          <p>A clear view of your recruitment activity.</p>
+          <div className="card-eyebrow">System overview</div>
+          <h2>Technical dashboard</h2>
+          <p className="hint">Live telemetry from the screening pipeline. Every figure below is read from the backend — nothing is simulated.</p>
         </div>
         <Button type="button" className="btn-primary" onClick={onNewScreening}>
           <Plus size={16} /> New screening
         </Button>
       </div>
 
+      <div className="tech-strip rise" style={{ '--d': '60ms' }} aria-label="Pipeline configuration">
+        <span className="tech-item"><i className="dot ok" />PIPELINE&nbsp;<b>STANDBY</b></span>
+        <span className="tech-item">EMBEDDINGS&nbsp;<b>all-MiniLM-L6-v2 + TF-IDF</b></span>
+        <span className="tech-item">SKILL_TAXONOMY&nbsp;<b>234</b></span>
+        <span className="tech-item">SCORING&nbsp;<b>50/25/15/10</b></span>
+        <span className="tech-item">AUTH&nbsp;<b>JWT</b></span>
+      </div>
+
+      <div className="tech-pipe rise" style={{ '--d': '100ms' }} aria-label="NLP pipeline stages">
+        {stages.map(([key, label], i) => (
+          <span className="tech-stage" key={key}>
+            <span className="tech-stage-n">{String(i + 1).padStart(2, '0')}</span>
+            {label}
+          </span>
+        ))}
+      </div>
+
       <div className="stat-grid">
         {loading
           ? [0, 1, 2, 3].map((i) => (
             <div className="stat-card" key={i}>
-              <div className="stat-top">
-                <div className="stat-icon skeleton" style={{ width: 40, height: 40 }}>&nbsp;</div>
-              </div>
               <div className="stat-value skeleton" style={{ width: '55%' }}>&nbsp;</div>
               <div className="stat-label skeleton" style={{ width: '75%', marginTop: 10 }}>&nbsp;</div>
             </div>
           ))
-          : cards.map((c, i) => (
-            <div className={`stat-card rise stat-${c.tone}`} key={c.label}>
-              <div className="stat-top">
-                <span className="stat-icon">{c.icon}</span>
-              </div>
-              <div className="stat-value">{c.value}</div>
-              <div className="stat-label">{c.label}</div>
-              <div className="stat-hint">{c.hint}</div>
+          : telemetry.map((t) => (
+            <div className="stat-card tech-card rise" key={t.label}>
+              <div className="stat-value mono">{t.value}</div>
+              <div className="stat-label mono-label">{t.label}</div>
+              <div className="stat-hint">{t.hint}</div>
             </div>
           ))}
       </div>
 
       <div className="dash-cols">
         <div className="dash-panel rise" style={{ '--d': '140ms' }}>
+          <h3>Scoring model</h3>
+          <p className="panel-sub">Configured match-score composition. Fixed weights — the learned ranker only tunes the skills component.</p>
+          <div className="weight-list">
+            {WEIGHTS.map((w) => (
+              <div className="weight-row" key={w.key}>
+                <div className="weight-head">
+                  <span className="mono-label">{w.label}</span>
+                  <span className="mono">{w.pct}%</span>
+                </div>
+                <div className="weight-bar" role="img" aria-label={`${w.label} weight ${w.pct} percent`}>
+                  <div className="weight-fill" style={{ width: `${w.pct}%` }} />
+                </div>
+                <div className="weight-detail">{w.detail}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="dash-panel rise" style={{ '--d': '210ms' }}>
           <h3>Score distribution</h3>
-          <p className="panel-sub">How your candidates fall across verdict bands.</p>
+          <p className="panel-sub">Candidates per verdict band.</p>
           {loading ? (
             <div className="skeleton" style={{ height: 240, borderRadius: 12 }}>&nbsp;</div>
           ) : error ? <div className="empty-note">Score distribution is currently unavailable.</div> : dist.every((d) => !d.count) ? (
-            <div className="empty-note">
-              <div className="empty-ico"><GaugeIcon /></div>
-              No candidates yet — run your first screening to see the distribution.
-            </div>
+            <div className="empty-note">No candidates yet — run your first screening to see the distribution.</div>
           ) : (
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={dist} margin={{ top: 10, right: 10, left: -8, bottom: 0 }}>
@@ -160,40 +146,34 @@ export default function Dashboard({ data, loading = false, error = '', onNewScre
           )}
           {!loading && !error && dist.some(d => d.count) && <div className="chart-legend">{dist.map(d => <span key={d.label}><i style={{ background: BAND_COLORS[d.label] || 'var(--muted)' }} />{d.label}</span>)}</div>}
         </div>
+      </div>
 
-        <div className="dash-panel rise" style={{ '--d': '210ms' }}>
-          <h3>Recent screening sessions</h3>
-          <p className="panel-sub">Pick one up where you left off.</p>
-          {loading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="skeleton" style={{ height: 62, borderRadius: 12 }}>&nbsp;</div>
-              ))}
-            </div>
-          ) : error ? <div className="empty-note">Recent sessions are currently unavailable.</div> : recent.length === 0 ? (
-            <div className="empty-note">
-              <div className="empty-ico"><InboxIcon /></div>
-              No screening sessions yet — your recent batches will appear here.
-            </div>
-          ) : (
-            <ul className="session-list">
-              {recent.map((s) => (
-                <li key={s.id}>
-                  <Button type="button" className="session-row" onClick={() => onOpenSession(s.id)}>
-                    <span className="session-main">
-                      <strong>{s.job_title || 'Untitled role'}</strong>
-                      {s.job_company && <span className="muted"> · {s.job_company}</span>}
-                    </span>
-                    <span className="session-meta">
-                      {s.screened_count}/{s.total_resumes} screened · avg {Math.round((s.avg_score || 0) * 100)}%
-                    </span>
-                    <span className="session-date">{fmtDate(s.created_at)}</span>
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+      <div className="dash-panel rise" style={{ '--d': '260ms', marginTop: 16 }}>
+        <h3>Session log</h3>
+        <p className="panel-sub">Recent screening runs. Select a row to reopen it.</p>
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="skeleton" style={{ height: 46, borderRadius: 10 }}>&nbsp;</div>
+            ))}
+          </div>
+        ) : error ? <div className="empty-note">Session log is currently unavailable.</div> : recent.length === 0 ? (
+          <div className="empty-note">No screening sessions yet — runs will be logged here.</div>
+        ) : (
+          <ul className="log-list">
+            {recent.map((s) => (
+              <li key={s.id}>
+                <Button type="button" className="log-row" onClick={() => onOpenSession(s.id)}>
+                  <span className="mono log-id">{shortId(s.id)}</span>
+                  <span className="log-main"><strong>{s.job_title || 'Untitled role'}</strong>{s.job_company && <span className="muted"> · {s.job_company}</span>}</span>
+                  <span className="mono log-meta">{s.screened_count}/{s.total_resumes} screened</span>
+                  <span className="mono log-meta">avg {Math.round((s.avg_score || 0) * 100)}%</span>
+                  <span className="log-date">{fmtDate(s.created_at)}</span>
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

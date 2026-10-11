@@ -329,9 +329,9 @@ export default function App() {
   }
 
   const nav = [
-    ['dashboard', 'Dashboard'],
     ['jobs', 'Jobs'],
     ['history', 'History'],
+    ['dashboard', 'Dashboard'],
   ];
 
   return (

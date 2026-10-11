@@ -1,5 +1,6 @@
 import Button from './Button';
 import React, { useRef, useState } from 'react';
+import { Zap } from 'lucide-react';
 
 function Field({ label, hint, children }) {
   return (
@@ -10,6 +11,34 @@ function Field({ label, hint, children }) {
     </label>
   );
 }
+
+// Sample posting used by the "demo filler". Clearly illustrative — the
+// recruiter uploads their own resumes and can edit every field afterwards.
+const DEMO_JOB = {
+  title: 'Data Scientist',
+  company: 'Acme Analytics',
+  jdText: `We are hiring a Data Scientist to join our analytics team in Bengaluru.
+
+Responsibilities:
+- Build and deploy machine learning models for customer analytics
+- Design experiments and analyse A/B test results
+- Build dashboards and communicate insights to stakeholders
+- Write production-quality Python and SQL
+
+Must have:
+- 2+ years of experience in data science or analytics
+- Strong Python (pandas, scikit-learn) and SQL
+- Solid grasp of statistics and machine learning fundamentals
+
+Nice to have:
+- Deep learning (TensorFlow/PyTorch)
+- Cloud experience (AWS/GCP)
+- Degree in a quantitative field`,
+  requiredSkills: 'Python, Machine Learning, SQL, Statistics, Pandas, Scikit-learn',
+  preferredSkills: 'Deep Learning, TensorFlow, AWS, A/B Testing',
+  minExp: '2',
+  eduReq: 'B.Sc, M.Sc',
+};
 
 /**
  * Step 1 of the recruiter flow: structured job setup + batch resume upload.
@@ -39,6 +68,10 @@ export default function JobSetup({ job, setJob, files, setFiles, onScreen, error
     setFiles((prev) => prev.filter((_, idx) => idx !== i));
   }
 
+  function fillDemo() {
+    setJob((j) => ({ ...j, ...DEMO_JOB }));
+  }
+
   const totalKB = files.reduce((a, f) => a + f.size, 0) / 1024;
 
   return (
@@ -47,6 +80,13 @@ export default function JobSetup({ job, setJob, files, setFiles, onScreen, error
         <div className="card-eyebrow">Job setup</div>
         <h2>Describe the role</h2>
         <p className="hint">The screener compares every resume against this. The more specific the skills, the sharper the ranking.</p>
+
+        <div className="demo-fill-row">
+          <Button type="button" className="btn-ghost btn-sm" onClick={fillDemo} title="Fill the form with a sample job posting">
+            <Zap size={14} /> Fill demo job details
+          </Button>
+          <span className="hint">Upload your resumes, then click to fill the role fields with a sample posting.</span>
+        </div>
 
         <div className="form-row">
           <Field label="Job title *">
