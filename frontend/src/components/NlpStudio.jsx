@@ -142,7 +142,10 @@ export default function NlpStudio({
       if (walkStageStart.current == null) walkStageStart.current = Date.now();
       if (Date.now() - walkStageStart.current >= 3000) {
         walkStageStart.current = null;
-        setWalkN((n) => (n == null || n > 20 ? null : n + 1));
+        // 20 → null directly: walkN must NEVER render as 21, because the
+        // header reads STAGES_ENRICHED[walkN - 1].name and [20] is undefined
+        // → TypeError → blank page (this exact crash blanked the studio once).
+        setWalkN((n) => (n == null || n >= 20 ? null : n + 1));
       }
     }, 500);
     return () => clearInterval(t);
@@ -195,7 +198,7 @@ export default function NlpStudio({
   const rate = elapsed > 0 && doneCount > 0 ? doneCount / elapsed : 0;
   const eta = rate > 0 && doneCount < total ? Math.round((total - doneCount) / rate) : null;
   const walkEta = walking ? (21 - walkN) * 3000 : null; // ≈3s per remaining stage
-  const activeLabel = walking
+  const activeLabel = walking && walkN <= 20
     ? `Stage ${walkN} of 20 · ${STAGES_ENRICHED[walkN - 1].name}`
     : running
       ? (running.stages.find((s) => s.status === 'active') || {}).label || 'Working…'
