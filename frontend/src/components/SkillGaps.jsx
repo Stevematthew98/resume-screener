@@ -45,12 +45,12 @@ export default function SkillGaps({ sessionId }) {
             <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12, fill: 'var(--muted)' }}
               tickLine={false} axisLine={{ stroke: 'var(--line)' }}
               label={{ value: 'candidates missing', position: 'insideBottomRight', offset: -2, fontSize: 11, fill: 'var(--muted)' }} />
-            <YAxis type="category" dataKey="skill" width={140} tick={{ fontSize: 12, fill: 'var(--ink-2)', fontWeight: 600 }}
+            <YAxis type="category" dataKey="skill" width={140} tick={{ fontSize: 12, fill: 'var(--text-2)', fontWeight: 600 }}
               tickLine={false} axisLine={false} />
-            <Tooltip cursor={{ fill: 'var(--amber-bg)' }} content={({ active, payload }) => active && payload?.length ? <div className="chart-tooltip"><strong>{payload[0].payload.skill}</strong>{payload[0].value} of {payload[0].payload.total_candidates} candidates missing</div> : null} />
+            <Tooltip cursor={{ fill: 'var(--amber-soft)' }} content={({ active, payload }) => active && payload?.length ? <div className="chart-tooltip"><strong>{payload[0].payload.skill}</strong>{payload[0].value} of {payload[0].payload.total_candidates} candidates missing</div> : null} />
             <Bar dataKey="missing_count" name="candidates missing" fill="var(--amber)"
               radius={[0, 8, 8, 0]} barSize={18}
-              background={{ fill: 'var(--surface-2)', radius: 8 }} />
+              background={{ fill: 'var(--bg-2)', radius: 8 }} />
           </BarChart>
         </ResponsiveContainer>
       </div>
