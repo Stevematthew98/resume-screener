@@ -1,3 +1,5 @@
+import Button from './Button';
+import { BriefcaseBusiness, History, Plus, Trash2, ArrowRight } from 'lucide-react';
 import React from 'react';
 
 function fmtDate(iso) {
@@ -5,7 +7,7 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-export default function HistoryView({ sessions, onOpenSession }) {
+export default function HistoryView({ sessions, loading = false, error: loadError = '', onOpenSession }) {
   return (
     <div className="history">
       <div className="dash-head">
@@ -15,8 +17,8 @@ export default function HistoryView({ sessions, onOpenSession }) {
         </div>
       </div>
 
-      {sessions.length === 0 ? (
-        <div className="empty-card">
+      {loading ? <div className="stat-grid" role="status" aria-label="Loading sessions">{[0,1,2].map(i => <div key={i} className="skeleton" style={{height: 140}} />)}</div> : loadError ? <div className="empty-note">Sessions are currently unavailable.</div> : sessions.length === 0 ? (
+        <div className="empty-card"><div className="empty-ico"><History size={22} /></div>
           <h3>No sessions yet</h3>
           <p>Run your first screening and it will appear here with the full ranking.</p>
         </div>
@@ -24,7 +26,7 @@ export default function HistoryView({ sessions, onOpenSession }) {
         <ul className="session-list big">
           {sessions.map((s) => (
             <li key={s.id}>
-              <button type="button" className="session-row" onClick={() => onOpenSession(s.id)}>
+              <Button type="button" className="session-row" onClick={() => onOpenSession(s.id)}>
                 <span className="session-main">
                   <strong>#{s.id} · {s.job_title || 'Untitled role'}</strong>
                   {s.job_company && <span className="muted"> · {s.job_company}</span>}
@@ -34,7 +36,7 @@ export default function HistoryView({ sessions, onOpenSession }) {
                 </span>
                 <span className="session-date">{fmtDate(s.created_at)}</span>
                 <span className="link-arrow">View →</span>
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

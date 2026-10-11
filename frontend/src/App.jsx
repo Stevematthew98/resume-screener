@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import Button from './components/Button';
+import { LayoutDashboard, BriefcaseBusiness, History, ScanLine, LogOut, Menu, X, ChevronRight, ShieldCheck, Plus } from 'lucide-react';
 import {
   blankStages,
   createJob,
@@ -60,6 +62,9 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
 
+  const [navOpen, setNavOpen] = useState(false);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState('');
   const [view, setView] = useState('dashboard'); // dashboard | jobs | history | setup | screening | ranking | historyDetail
   const [job, setJob] = useState(EMPTY_JOB);
   const [files, setFiles] = useState([]);
@@ -113,9 +118,11 @@ export default function App() {
 
   useEffect(() => {
     if (user) {
-      refreshDashboard().catch(() => {});
-      refreshJobs().catch(() => {});
-      refreshSessions().catch(() => {});
+      setDataLoading(true);
+      setDataError('');
+      Promise.all([refreshDashboard(), refreshJobs(), refreshSessions()])
+        .catch(() => setDataError('Could not load your workspace. Check the screening service and try again.'))
+        .finally(() => setDataLoading(false));
     }
   }, [user, refreshDashboard, refreshJobs, refreshSessions]);
 
@@ -309,7 +316,7 @@ export default function App() {
   const isHistoryDetail = view === 'historyDetail';
 
   if (!authChecked) {
-    return <div className="page"><p className="muted" style={{ padding: 40, textAlign: 'center' }}>Loading…</p></div>;
+    return <div className="auth-loading" role="status"><ScanLine size={28} /><p>Opening your workspace…</p></div>;
   }
 
   if (!user) {
@@ -327,45 +334,41 @@ export default function App() {
   ];
 
   return (
-    <div className="page">
-      <header className="hero">
-        <div className="hero-glow" />
-        <div className="hero-inner">
-          <div className="hero-badge">Recruiter screening · NLP-powered</div>
-          <h1>Resume Screener</h1>
-          <p>Screen a whole batch of resumes against a role — watch the analysis happen, then work a ranked shortlist.</p>
+    <div className="app-shell">
+      <a className="skip-link" href="#workspace-content">Skip to content</a>
+      {navOpen && <Button className="nav-scrim" aria-label="Close navigation" onClick={() => setNavOpen(false)} />}
+      <aside className={`app-sidebar ${navOpen ? 'is-open' : ''}`}>
+        <div className="sidebar-brand"><span className="brand-mark"><ScanLine size={22} /></span><div>Resume Screener<span>Recruitment workspace</span></div><Button className="mobile-close icon-button" aria-label="Close navigation" onClick={() => setNavOpen(false)}><X size={20} /></Button></div>
+        <div className="nav-label">WORKSPACE</div>
+        <nav className="sidebar-nav" aria-label="Main navigation">
+          {nav.map(([v, label]) => {
+            const Icon = v === 'dashboard' ? LayoutDashboard : v === 'jobs' ? BriefcaseBusiness : History;
+            const active = view === v || (v === 'history' && isHistoryDetail);
+            return <Button key={v} className={`nav-item ${active ? 'active' : ''}`} aria-current={active ? 'page' : undefined} onClick={() => {
+              setNavOpen(false);
+              setDataError(''); setDataLoading(true);
+              const request = v === 'dashboard' ? refreshDashboard() : v === 'jobs' ? refreshJobs() : refreshSessions();
+              request.catch(() => setDataError('Could not load this page. Please check the screening service.')).finally(() => setDataLoading(false));
+              setView(v); window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}><Icon size={19} /><span>{label}</span>{active && <ChevronRight size={16} />}</Button>;
+          })}
+          {['setup', 'screening', 'ranking'].includes(view) && <div className="nav-item active" aria-current="page"><ScanLine size={19} /><span>Screening flow</span><ChevronRight size={16} /></div>}
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="sidebar-trust"><ShieldCheck size={19} /><div>Evidence-led hiring<span>Human decisions. Always.</span></div></div>
+          <div className="sidebar-account"><span className="account-avatar">{(user.name || user.email || 'R').charAt(0).toUpperCase()}</span><div><strong>{user.name || 'Recruiter'}</strong><span>{user.email}</span></div><Button className="icon-button" onClick={handleLogout} aria-label="Sign out" title="Sign out"><LogOut size={18} /></Button></div>
         </div>
-        <div className="userbar">
-          <span className="user-chip">{user.name || user.email}</span>
-          <button type="button" className="btn-ghost btn-sm" onClick={handleLogout}>Sign out</button>
-        </div>
+      </aside>
+      <div className="app-main">
+        <header className="workspace-topbar">
+          <div className="breadcrumb"><Button className="mobile-menu icon-button" aria-label="Open navigation" aria-expanded={navOpen} onClick={() => setNavOpen(true)}><Menu size={21} /></Button><span>Workspace</span><ChevronRight size={14} /><strong>{({dashboard: 'Dashboard', jobs: 'Job profiles', history: 'Screening history', setup: 'New screening', screening: 'Live screening', ranking: 'Screening results', historyDetail: 'Session results'})[view]}</strong></div>
+          <span className="workspace-label"><ScanLine size={15} /> AI recruitment</span>
       </header>
-
-      <nav className="viewtabs main-nav">
-        {nav.map(([v, label]) => (
-          <button
-            key={v}
-            type="button"
-            className={`viewtab ${view === v || (v === 'history' && isHistoryDetail) ? 'active' : ''}`}
-            onClick={() => {
-              if (v === 'dashboard') refreshDashboard().catch(() => {});
-              if (v === 'jobs') refreshJobs().catch(() => {});
-              if (v === 'history') refreshSessions().catch(() => {});
-              setView(v);
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
-          >
-            {label}
-          </button>
-        ))}
-        {['setup', 'screening', 'ranking'].includes(view) && (
-          <span className="viewtab active">Screening flow</span>
-        )}
-      </nav>
-
+        <main id="workspace-content" className="workspace-content">
+          {dataError && <div className="form-error" role="alert">{dataError}</div>}
       {view === 'dashboard' && (
         <Dashboard
-          data={dashData}
+          data={dashData} loading={dataLoading} error={dataError}
           onNewScreening={() => goSetup(null)}
           onOpenSession={openSession}
         />
@@ -373,7 +376,7 @@ export default function App() {
 
       {view === 'jobs' && (
         <JobsView
-          jobs={jobs}
+          jobs={jobs} loading={dataLoading} error={dataError}
           onRefresh={refreshJobs}
           onScreenJob={(j) => goSetup(j)}
           onNewJob={() => goSetup(null)}
@@ -381,14 +384,15 @@ export default function App() {
       )}
 
       {view === 'history' && (
-        <HistoryView sessions={sessions} onOpenSession={openSession} />
+        <HistoryView sessions={sessions} loading={dataLoading} error={dataError} onOpenSession={openSession} />
       )}
 
       {view === 'setup' && (
         <>
-          <button type="button" className="back-link" onClick={() => setView(activeJobId ? 'jobs' : 'dashboard')}>
+          <div className="dash-head"><div><h2>New screening</h2><p>Set up your role and build an evidence-led shortlist.</p></div></div>
+          <Button type="button" className="back-link" onClick={() => setView(activeJobId ? 'jobs' : 'dashboard')}>
             ← Back
-          </button>
+          </Button>
           <JobSetup job={job} setJob={setJob} files={files} setFiles={setFiles}
             onScreen={startScreening} error={error} />
         </>
@@ -431,9 +435,11 @@ export default function App() {
         />
       )}
 
-      <footer className="footer">
+      </main>
+      <footer className="footer"><ShieldCheck size={16} />
         <p>Screening scores are similarity assessments to assist your decision — never hiring decisions. Names, colleges and contact details are never used in scoring, and no candidate is ever rejected automatically.</p>
       </footer>
+    </div>
     </div>
   );
 }

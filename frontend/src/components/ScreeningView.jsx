@@ -1,3 +1,4 @@
+import Button from './Button';
 import React, { useState } from 'react';
 import Timeline from './Timeline';
 
@@ -17,14 +18,14 @@ export default function ScreeningView({ total, doneCount, currentFile, resumes, 
         <p className="hint">
           {currentFile ? <>Now reading: <strong>{currentFile}</strong></> : 'Starting the pipeline…'}
         </p>
-        <div className="progress-track">
+        <div className="progress-track" role="progressbar" aria-label="Batch screening progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
           <div className="progress-fill" style={{ width: `${pct}%` }} />
         </div>
         <div className="progress-meta">
           <span>{doneCount} of {total} resumes screened</span>
           <span>{pct}%</span>
         </div>
-        {error && <div className="alert">{error}</div>}
+        {error && <div className="alert" role="alert">{error}</div>}
       </section>
 
       <div className="resume-pipes">
@@ -33,16 +34,16 @@ export default function ScreeningView({ total, doneCount, currentFile, resumes, 
           const open = openId === r.key || (r.status === 'running' && openId === null);
           return (
             <section key={r.key} className={`card pipe-card rise ${r.status}`}>
-              <button
+              <Button
                 type="button"
-                className="pipe-head"
+                className="pipe-head" aria-expanded={open}
                 onClick={() => setOpenId(open && openId ? null : r.key)}
               >
                 <span className={`pipe-status-dot ${r.status}`} />
                 <span className="pipe-name">{r.filename}</span>
                 <span className="pipe-count">{r.status === 'error' ? 'failed' : `${doneStages}/8 stages`}</span>
                 <span className={`chev ${open ? 'open' : ''}`}>▾</span>
-              </button>
+              </Button>
               {open && (
                 <div className="pipe-body">
                   {r.status === 'error'

@@ -1,4 +1,11 @@
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+// API base URL: VITE_API_URL in production (set on Vercel), localhost only
+// as a local-development fallback. A production build without VITE_API_URL
+// fails fast instead of silently pointing at localhost.
+const API_URL = (import.meta.env.VITE_API_URL
+  || (import.meta.env.DEV ? 'http://localhost:8000' : '')).replace(/\/$/, '');
+if (!API_URL) {
+  throw new Error('VITE_API_URL is not configured for this build.');
+}
 
 export const STAGE_ORDER = [
   'step1_ingest',

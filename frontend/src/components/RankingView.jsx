@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import Button from './Button';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import SkillGaps from './SkillGaps';
 import { getRankerStatus, sendFeedback } from '../api';
 
@@ -32,10 +33,10 @@ function Collapsible({ title, children, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="collapsible">
-      <button type="button" className="collapsible-head" onClick={() => setOpen(!open)}>
+      <Button type="button" className="collapsible-head" aria-expanded={open} onClick={() => setOpen(!open)}>
         <span>{title}</span>
         <span className={`chev ${open ? 'open' : ''}`}>▾</span>
-      </button>
+      </Button>
       {open && <div className="collapsible-body">{children}</div>}
     </div>
   );
@@ -44,7 +45,7 @@ function Collapsible({ title, children, defaultOpen = false }) {
 function ScoreRing({ score, size = 120 }) {
   const r = 50;
   const c = 2 * Math.PI * r;
-  const color = score >= 0.65 ? '#0e9f6e' : score >= 0.4 ? '#d97706' : '#64748b';
+  const color = score >= 0.65 ? 'var(--green)' : score >= 0.4 ? 'var(--amber)' : 'var(--muted)';
   return (
     <div className="ring-wrap" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox="0 0 120 120">
@@ -54,7 +55,7 @@ function ScoreRing({ score, size = 120 }) {
             <stop offset="100%" stopColor={color} stopOpacity="0.55" />
           </linearGradient>
         </defs>
-        <circle cx="60" cy="60" r={r} fill="none" stroke="#e6ebf4" strokeWidth="11" />
+        <circle cx="60" cy="60" r={r} fill="none" stroke="var(--line)" strokeWidth="11" />
         <circle cx="60" cy="60" r={r} fill="none" stroke="url(#ringGrad)" strokeWidth="11"
           strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - score)}
           transform="rotate(-90 60 60)" className="ring-anim" />
@@ -78,6 +79,23 @@ function CandidateDetail({ candidate, statusInfo, onClose, onStatus, readOnly = 
   const [msg, setMsg] = useState('');
   const [voteMsg, setVoteMsg] = useState('');
   const [voted, setVoted] = useState(null);
+  const dialogRef = useRef(null);
+  useEffect(() => {
+    const previous = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    dialogRef.current?.querySelector('button')?.focus();
+    function handleKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+      if (e.key !== 'Tab') return;
+      const controls = [...(dialogRef.current?.querySelectorAll('button:not(:disabled), input, textarea, a[href], [tabindex="0"]') || [])];
+      const first = controls[0], last = controls[controls.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+    }
+    document.addEventListener('keydown', handleKey);
+    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', handleKey); previous?.focus?.(); };
+  }, [onClose]);
   const p = candidate.personal || {};
   const displayName = p.name || candidate.filename.replace(/\.[^.]+$/, '');
   const personalization = candidate.personalization || {};
@@ -138,14 +156,14 @@ function CandidateDetail({ candidate, statusInfo, onClose, onStatus, readOnly = 
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <button className="modal-close" onClick={onClose} aria-label="Close">✕</button>
+      <div className="modal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="candidate-name" onClick={(e) => e.stopPropagation()}>
+        <Button className="modal-close" onClick={onClose} aria-label="Close">✕</Button>
 
         <div className="detail-head">
           <div className="detail-id">
             <div className="avatar">{displayName.charAt(0).toUpperCase()}</div>
             <div>
-              <h2>{displayName}</h2>
+              <h2 id="candidate-name">{displayName}</h2>
               <div className="detail-contact">
                 {p.email && <span>✉️ {p.email}</span>}
                 {p.phone && <span>📞 {p.phone}</span>}
@@ -194,7 +212,7 @@ function CandidateDetail({ candidate, statusInfo, onClose, onStatus, readOnly = 
                       <span className="component-points">{comp.points} <span className="muted">of {max} pts</span></span>
                     </div>
                     <ScoreBar value={max ? comp.points / max : 0}
-                      color={comp.points / max >= 0.7 ? '#0e9f6e' : comp.points / max >= 0.4 ? '#d97706' : '#94a3b8'} />
+                      color={comp.points / max >= 0.7 ? 'var(--green)' : comp.points / max >= 0.4 ? 'var(--amber)' : 'var(--muted)'} />
                     <p className="component-detail">{comp.detail}</p>
                   </div>
                 );
@@ -252,15 +270,15 @@ function CandidateDetail({ candidate, statusInfo, onClose, onStatus, readOnly = 
             <div className="decision-box">
               <p className="hint">Rankings assist you — they never decide. No candidate is ever rejected automatically.</p>
               <div className="decision-actions">
-                <button className="btn-primary" disabled={saving} onClick={() => changeStatus('Shortlisted')}>Shortlist</button>
-                <button className="btn-ghost" disabled={saving} onClick={() => changeStatus('Under Review')}>Mark for review</button>
-                <button className="btn-danger-ghost" disabled={saving} onClick={() => setShowReject(!showReject)}>Reject</button>
+                <Button className="btn-primary" disabled={saving} onClick={() => changeStatus('Shortlisted')}>Shortlist</Button>
+                <Button className="btn-ghost" disabled={saving} onClick={() => changeStatus('Under Review')}>Mark for review</Button>
+                <Button className="btn-danger-ghost" disabled={saving} onClick={() => setShowReject(!showReject)}>Reject</Button>
               </div>
               {showReject && (
                 <div className="reject-box">
                   <input type="text" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)}
-                    placeholder="Reason for rejection (required)" />
-                  <button className="btn-danger" disabled={saving} onClick={() => changeStatus('Rejected')}>Confirm rejection</button>
+                    aria-label="Reason for rejection" placeholder="Reason for rejection (required)" />
+                  <Button className="btn-danger" disabled={saving} onClick={() => changeStatus('Rejected')}>Confirm rejection</Button>
                 </div>
               )}
               <label className="field" style={{ marginTop: 12 }}>
@@ -268,13 +286,13 @@ function CandidateDetail({ candidate, statusInfo, onClose, onStatus, readOnly = 
                 <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)}
                   placeholder="Private notes about this candidate…" />
               </label>
-              <button className="btn-ghost" disabled={saving} onClick={saveNotes}>Save notes</button>
+              <Button className="btn-ghost" disabled={saving} onClick={saveNotes}>Save notes</Button>
               <div className="vote-row">
                 <span className="muted">Was this analysis helpful?</span>
-                <button type="button" className={`vote-btn ${voted === true ? 'voted' : ''}`}
-                  disabled={voted !== null} onClick={() => vote(true)} aria-label="Helpful">👍</button>
-                <button type="button" className={`vote-btn ${voted === false ? 'voted' : ''}`}
-                  disabled={voted !== null} onClick={() => vote(false)} aria-label="Not helpful">👎</button>
+                <Button type="button" className={`vote-btn ${voted === true ? 'voted' : ''}`}
+                  disabled={voted !== null} onClick={() => vote(true)} aria-label="Helpful">👍</Button>
+                <Button type="button" className={`vote-btn ${voted === false ? 'voted' : ''}`}
+                  disabled={voted !== null} onClick={() => vote(false)} aria-label="Not helpful">👎</Button>
                 {voteMsg && <span className="muted">{voteMsg}</span>}
               </div>
               {msg && <p className="muted" style={{ marginTop: 8 }}>{msg}</p>}
@@ -359,25 +377,25 @@ export default function RankingView({ job, ranking, candidates, statuses, onSele
         )}
         <div className="toolbar">
           <input className="toolbar-input" type="text" value={query}
-            onChange={(e) => setQuery(e.target.value)} placeholder="🔍 Search by name or file…" />
+            onChange={(e) => setQuery(e.target.value)} aria-label="Search candidates by name or file" placeholder="Search by name or file…" />
           <input className="toolbar-input" type="text" value={skillFilter}
-            onChange={(e) => setSkillFilter(e.target.value)} placeholder="Filter by skill…" />
+            onChange={(e) => setSkillFilter(e.target.value)} aria-label="Filter by skill" placeholder="Filter by skill…" />
           <input className="toolbar-input toolbar-num" type="number" min="0" step="0.5" value={minExpFilter}
-            onChange={(e) => setMinExpFilter(e.target.value)} placeholder="Min. yrs exp" />
-          <button className="btn-ghost btn-sm" onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}>
+            onChange={(e) => setMinExpFilter(e.target.value)} aria-label="Minimum years of experience" placeholder="Min. yrs exp" />
+          <Button className="btn-ghost btn-sm" onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}>
             Score {sortDir === 'desc' ? '↓' : '↑'}
-          </button>
+          </Button>
           {onExport && (
             <span className="export-group">
-              <button className="btn-ghost btn-sm" disabled={!!exporting} onClick={() => handleExport('csv')}>
+              <Button className="btn-ghost btn-sm" disabled={!!exporting} onClick={() => handleExport('csv')}>
                 {exporting === 'csv' ? '…' : '⬇ CSV'}
-              </button>
-              <button className="btn-ghost btn-sm" disabled={!!exporting} onClick={() => handleExport('xlsx')}>
+              </Button>
+              <Button className="btn-ghost btn-sm" disabled={!!exporting} onClick={() => handleExport('xlsx')}>
                 {exporting === 'xlsx' ? '…' : '⬇ Excel'}
-              </button>
-              <button className="btn-ghost btn-sm" disabled={!!exporting} onClick={() => handleExport('pdf')}>
+              </Button>
+              <Button className="btn-ghost btn-sm" disabled={!!exporting} onClick={() => handleExport('pdf')}>
                 {exporting === 'pdf' ? '…' : '⬇ PDF report'}
-              </button>
+              </Button>
             </span>
           )}
         </div>
@@ -391,12 +409,12 @@ export default function RankingView({ job, ranking, candidates, statuses, onSele
             <table className="rank-table">
               <thead>
                 <tr>
-                  <th>#</th>
-                  <th>Candidate</th>
-                  <th>Score</th>
-                  <th>Verdict</th>
-                  <th>Skills</th>
-                  <th>Status</th>
+                  <th scope="col">Rank</th>
+                  <th scope="col">Candidate</th>
+                  <th scope="col">Match score</th>
+                  <th scope="col">Verdict</th>
+                  <th scope="col">Skills</th>
+                  <th scope="col">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -404,13 +422,13 @@ export default function RankingView({ job, ranking, candidates, statuses, onSele
                   <tr key={r.resume_id} onClick={() => onSelectCandidate(r.resume_id)} className="rank-row">
                     <td className="rank-num">{sortDir === 'desc' ? i + 1 : rows.length - i}</td>
                     <td>
-                      <div className="cand-name">{r.name || r.filename.replace(/\.[^.]+$/, '')}</div>
+                      <Button className="candidate-open cand-name" onClick={(e) => { e.stopPropagation(); onSelectCandidate(r.resume_id); }}>{r.name || r.filename.replace(/\.[^.]+$/, '')}</Button>
                       <div className="cand-sub">{r.experience_years} yrs exp</div>
                     </td>
                     <td>
                       <div className="score-cell">
                         <span className="score-pct">{Math.round(r.score * 100)}%</span>
-                        <ScoreBar value={r.score} color={r.score >= 0.65 ? '#0e9f6e' : r.score >= 0.4 ? '#d97706' : '#94a3b8'} />
+                        <ScoreBar value={r.score} color={r.score >= 0.65 ? 'var(--green)' : r.score >= 0.4 ? 'var(--amber)' : 'var(--muted)'} />
                       </div>
                     </td>
                     <td><BandChip band={r.band} /></td>
@@ -430,10 +448,10 @@ export default function RankingView({ job, ranking, candidates, statuses, onSele
       )}
 
       {onBack && (
-        <button className="cta cta-secondary" type="button" onClick={onBack}>← Back to history</button>
+        <Button className="cta cta-secondary" type="button" onClick={onBack}>← Back to history</Button>
       )}
       {!readOnly && (
-        <button className="cta cta-secondary" type="button" onClick={onRestart}>Screen another batch →</button>
+        <Button className="cta cta-secondary" type="button" onClick={onRestart}>Screen another batch →</Button>
       )}
 
       {sessionId && <SkillGaps sessionId={sessionId} />}

@@ -96,6 +96,9 @@ class JobIn(BaseModel):
 
 @app.on_event("startup")
 def _startup():
+    # Fail closed: never boot production with the insecure dev JWT fallback.
+    if os.getenv("RAILWAY_ENVIRONMENT") == "production" and not os.getenv("JWT_SECRET", "").strip():
+        raise RuntimeError("JWT_SECRET must be set in production.")
     # Models are pre-downloaded into the image at build time; this just loads them.
     ensure_models()
     init_db()
@@ -180,6 +183,9 @@ async def analyze(
         raise HTTPException(status_code=400, detail="File too large (max 10 MB).")
     # Resume bytes are processed in memory and never logged or persisted.
     result = analyze_resume(data, filename, job_description, min_experience_years)
+    if result.get("processing_error"):
+        # A file we cannot read is a processing failure, not a weak match.
+        raise HTTPException(status_code=422, detail=result["processing_error"])
     return result
 
 
@@ -432,6 +438,11 @@ async def screen_stream(
                         yield _sse({"type": "stage", "resume_id": resume_id,
                                     "filename": filename, "index": idx, "total": total,
                                     **payload})
+                    elif kind == "error":
+                        yield _sse({"type": "resume_error", "resume_id": resume_id,
+                                    "filename": filename, "index": idx, "total": total,
+                                    "message": payload.get("message") or
+                                    "Could not analyse this file."})
                     else:
                         dbs = get_session()
                         try:
