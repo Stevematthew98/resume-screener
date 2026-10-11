@@ -238,10 +238,8 @@ export default function App() {
           }).catch(() => {});
           refreshDashboard().catch(() => {});
           refreshSessions().catch(() => {});
-          setTimeout(() => {
-            setView('ranking');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }, 1200);
+          // Stay on the studio: the completion summary offers
+          // View Candidate Analysis / Explore NLP Results / replay actions.
         }
       }, { jobId });
     } catch (e) {

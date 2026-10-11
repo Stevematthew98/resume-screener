@@ -857,6 +857,26 @@ textarea { resize: vertical; min-height: 90px; }
 .code-line { display: flex; min-width: max-content; padding: 0 16px; }
 .code-ln { width: 34px; flex-shrink: 0; text-align: right; margin-right: 14px; color: #5B6478; user-select: none; }
 
+/* ---- Studio replay ---- */
+.studio-replay { border-color: rgba(83, 109, 254, 0.35); }
+.replay-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 10px; }
+
+/* ---- Compact login (credentials) page: fit without scrolling ---- */
+.auth-brand { padding: 32px; }
+.auth-logo { margin-bottom: 18px; }
+.auth-logo-mark { width: 40px; height: 40px; border-radius: 12px; }
+.auth-brand h1 { font-size: clamp(20px, 2vw, 25px); margin-bottom: 10px; }
+.auth-eyebrow { margin-bottom: 10px; }
+.auth-sub { font-size: 13.5px; margin-bottom: 18px; }
+.auth-how { margin-top: 16px; gap: 10px; }
+.auth-step { gap: 11px; }
+.auth-step-num { width: 26px; height: 26px; font-size: 12px; }
+.auth-step strong { font-size: 13px; }
+.auth-step span { font-size: 12px; }
+.auth-formula { margin-top: 16px; gap: 6px; }
+.auth-formula span { font-size: 11px; padding: 4px 10px; }
+.auth-fair { margin-top: 14px; font-size: 12px; padding-left: 12px; }
+
 /* ---- Studio compact mode: fit the first screen without scrolling ---- */
 .studio { gap: 10px; }
 .studio .card { padding: 14px 16px; }

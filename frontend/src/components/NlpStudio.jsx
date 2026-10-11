@@ -34,12 +34,33 @@ export default function NlpStudio({
   const [selResumeKey, setSelResumeKey] = useState(null);
   const [pinnedStage, setPinnedStage] = useState(null);
   const [showSummary, setShowSummary] = useState(true);
+  const [replayN, setReplayN] = useState(null); // null = not replaying; else stage number 1..20
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // New run → reset studio UI state.
+  useEffect(() => {
+    setReplayN(null);
+    setPinnedStage(null);
+    setSelResumeKey(null);
+    setShowSummary(true);
+  }, [startedAt]);
+
+  // Guided replay: walk the RECORDED stages, ~3s each ≈ 60 seconds total.
+  // All data shown is from this run's real outputs — clearly labeled as replay.
+  useEffect(() => {
+    if (replayN == null) return;
+    if (replayN >= 20) {
+      const t = setTimeout(() => setReplayN(null), 2500);
+      return () => clearTimeout(t);
+    }
+    const t = setTimeout(() => setReplayN(replayN + 1), 3000);
+    return () => clearTimeout(t);
+  }, [replayN]);
 
   const running = resumes.find((r) => r.status === 'running');
   const selected = (selResumeKey && resumes.find((r) => r.key === selResumeKey)) || running || resumes[0] || null;
@@ -82,7 +103,7 @@ export default function NlpStudio({
       }
     }
   }
-  const selStageN = pinnedStage || autoStage;
+  const selStageN = replayN || pinnedStage || autoStage;
   const stage = STAGES_ENRICHED.find((s) => s.n === selStageN) || STAGES_ENRICHED[0];
   const stageExec = exec[stage.execKey] || { status: 'pending' };
   const specStatus = failed ? 'failed' : toSpec(stageExec.status);
@@ -159,7 +180,28 @@ export default function NlpStudio({
           <div className="studio-done-actions">
             <Button type="button" className="btn-primary btn-sm" onClick={onViewRanking}>View Candidate Analysis</Button>
             <Button type="button" className="btn-ghost btn-sm" onClick={() => setShowSummary(false)}>Explore NLP Results</Button>
+            <Button type="button" className="btn-ghost btn-sm" onClick={() => { setShowSummary(false); setReplayN(1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Replay pipeline (≈60 sec)</Button>
             <Button type="button" className="btn-ghost btn-sm" onClick={onViewRanking}>Return to Candidate Rankings</Button>
+          </div>
+        </section>
+      )}
+
+      {/* ---------- replay banner ---------- */}
+      {replayN != null && (
+        <section className="card rise studio-replay" aria-label="Pipeline replay">
+          <div className="replay-head">
+            <div>
+              <div className="card-eyebrow">Guided replay · recorded run</div>
+              <p className="hint" style={{ margin: 0 }}>
+                {replayN <= 20
+                  ? <>Replaying stage <strong>{replayN} of 20</strong> — {STAGES_ENRICHED[replayN - 1].name}. All values are this run’s real recorded outputs, not live processing.</>
+                  : <>Replay complete — explore any stage freely.</>}
+              </p>
+            </div>
+            <Button type="button" className="btn-ghost btn-sm" onClick={() => setReplayN(null)}>Stop replay</Button>
+          </div>
+          <div className="progress-track" aria-hidden="true">
+            <div className="progress-fill" style={{ width: `${Math.min(100, (replayN / 20) * 100)}%` }} />
           </div>
         </section>
       )}
@@ -223,7 +265,7 @@ export default function NlpStudio({
               </div>
             ))}
           </div>
-          {pinnedStage && (
+          {pinnedStage && replayN == null && (
             <Button type="button" className="btn-ghost btn-sm studio-live-btn" onClick={() => setPinnedStage(null)}>
               <CheckCircle2 size={14} /> Following live
             </Button>
