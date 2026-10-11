@@ -20,8 +20,25 @@ export default function Login({ onAuth }) {
   const [busy, setBusy] = useState(false);
   const [demo, setDemo] = useState(null);
 
+  // Public demo credentials (same ones served by /api/auth/demo).
+  // Used only if the backend can't be reached after retries.
+  const DEMO_FALLBACK = { email: 'demo@recruiter.com', password: 'demo1234' };
+
   useEffect(() => {
-    getDemoCreds().then(setDemo).catch(() => {});
+    let alive = true;
+    let attempts = 0;
+    const load = () => {
+      getDemoCreds()
+        .then((d) => { if (alive && d && d.email) setDemo(d); else throw new Error('empty'); })
+        .catch(() => {
+          if (!alive) return;
+          attempts += 1;
+          if (attempts < 3) setTimeout(load, 1200 * attempts);
+          else setDemo(DEMO_FALLBACK);
+        });
+    };
+    load();
+    return () => { alive = false; };
   }, []);
 
   function fillDemo() {
