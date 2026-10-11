@@ -872,12 +872,12 @@ textarea { resize: vertical; min-height: 90px; }
 .studio-left .hint, .studio-right .hint { font-size: 11.5px; }
 .pipe-groups { gap: 8px; margin-top: 8px; }
 .pipe-group-label { font-size: 10px; margin-bottom: 3px; }
-.pipe-row { padding: 4px 8px; gap: 8px; border-radius: 8px; }
+.pipe-row { padding: 3px 8px; gap: 8px; border-radius: 8px; }
 .pipe-dot { width: 20px; height: 20px; font-size: 9.5px; }
 .pipe-rail { width: 20px; }
 .pipe-vline { min-height: 8px; margin: 2px 0; }
 .pipe-name { font-size: 12px; }
-.pipe-tagline { font-size: 10px; line-height: 1.35; }
+.pipe-tagline { display: none; } /* one-line explanation lives in the right panel + row tooltip */
 .pipe-icon { width: 12px; height: 12px; }
 .pipe-sub-tag { font-size: 9.5px; padding: 0 4px; }
 .st-badge { font-size: 9px; padding: 2px 7px; }
