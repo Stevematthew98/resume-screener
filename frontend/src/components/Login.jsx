@@ -2,29 +2,11 @@ import Button from './Button';
 import React, { useEffect, useState } from 'react';
 import { getDemoCreds, login, signup } from '../api';
 
-function DocIcon() {
+function LogoMark() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <path d="M14 2v6h6" /><path d="M9 13h6" /><path d="M9 17h6" />
-    </svg>
-  );
-}
-
-function EyeIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
-function ListIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" />
-      <path d="M3 6h.01" /><path d="M3 12h.01" /><path d="M3 18h.01" />
     </svg>
   );
 }
@@ -66,10 +48,19 @@ export default function Login({ onAuth }) {
     }
   }
 
-  const points = [
-    { icon: <EyeIcon />, text: 'Watch every resume move through a live 8-stage NLP pipeline' },
-    { icon: <ListIcon />, text: 'Ranked shortlists with the reasoning shown' },
-    { icon: <DocIcon />, text: 'Rankings assist — no one is ever auto-rejected' },
+  const steps = [
+    {
+      title: 'Upload resumes, describe the role',
+      text: 'Drop in PDF or DOCX resumes and paste the job description with required and preferred skills.',
+    },
+    {
+      title: 'Watch the 8-stage NLP pipeline',
+      text: 'Text extraction, skill detection, semantic matching and scoring run live for every resume.',
+    },
+    {
+      title: 'Get rankings you can explain',
+      text: 'Each score breaks into skills, job-description similarity, experience and education — with the evidence shown.',
+    },
   ];
 
   return (
@@ -77,32 +68,48 @@ export default function Login({ onAuth }) {
       <div className="auth-brand">
         <div className="auth-brand-inner">
           <div className="auth-logo">
-            <span className="auth-logo-mark">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <path d="M14 2v6h6" /><path d="M9 13h6" /><path d="M9 17h6" />
-              </svg>
-            </span>
+            <span className="auth-logo-mark"><LogoMark /></span>
             Resume Screener
           </div>
+          <p className="auth-eyebrow">NLP-Powered Recruitment Intelligence</p>
           <h1>Hire with evidence, not gut feel.</h1>
           <p className="auth-sub">
-            Screen batches of resumes with NLP — and see exactly why each
-            candidate ranks where they do.
+            Resume Screener reads batches of resumes, matches them against your
+            job description with NLP, and ranks candidates with transparent
+            scores — so every shortlist decision is backed by evidence you can
+            inspect.
           </p>
-          <ul className="auth-points">
-            {points.map((p) => (
-              <li key={p.text}>
-                <span className="auth-point-ico">{p.icon}</span>
-                <span>{p.text}</span>
+          <ol className="auth-how">
+            {steps.map((s, i) => (
+              <li className="auth-step" key={s.title}>
+                <span className="auth-step-num">{i + 1}</span>
+                <div>
+                  <strong>{s.title}</strong>
+                  <span>{s.text}</span>
+                </div>
               </li>
             ))}
-          </ul>
+          </ol>
+          <div className="auth-formula" aria-label="How the match score is weighted">
+            <span>Skills 50%</span>
+            <span>JD similarity 25%</span>
+            <span>Experience 15%</span>
+            <span>Education 10%</span>
+          </div>
+          <p className="auth-fair">Rankings assist your decision — no candidate is ever auto-rejected.</p>
         </div>
       </div>
 
       <div className="auth-form-side">
         <div className="auth-form">
+          <div className="auth-brand-mobile">
+            <div className="auth-logo">
+              <span className="auth-logo-mark"><LogoMark /></span>
+              Resume Screener
+            </div>
+            <h1>Hire with evidence, not gut feel.</h1>
+            <p className="auth-sub">NLP resume screening with explainable, evidence-backed candidate rankings.</p>
+          </div>
           <h2>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
           <p className="auth-sub">
             {mode === 'login' ? 'Sign in to your recruiter workspace.'
