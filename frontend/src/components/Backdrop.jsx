@@ -47,6 +47,15 @@ export default function Backdrop() {
     function step() {
       ctx.clearRect(0, 0, w, h);
 
+      // Soft glow following the cursor so the interaction zone is visible
+      if (mouse.x > -500 && mouse.y > -500) {
+        const glow = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, 130);
+        glow.addColorStop(0, 'rgba(83,109,254,0.07)');
+        glow.addColorStop(1, 'rgba(83,109,254,0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(mouse.x - 130, mouse.y - 130, 260, 260);
+      }
+
       for (const p of pts) {
         // Gentle repulsion around the cursor
         const dx = p.x - mouse.x;
@@ -54,15 +63,15 @@ export default function Backdrop() {
         const md2 = dx * dx + dy * dy;
         if (md2 < MOUSE_DIST * MOUSE_DIST && md2 > 4) {
           const md = Math.sqrt(md2);
-          const f = ((1 - md / MOUSE_DIST) * 0.05);
+          const f = ((1 - md / MOUSE_DIST) * 0.14);
           p.vx += (dx / md) * f;
           p.vy += (dy / md) * f;
         }
         // Cap speed so drift stays calm
         const sp = Math.hypot(p.vx, p.vy);
-        if (sp > 0.7) {
-          p.vx = (p.vx / sp) * 0.7;
-          p.vy = (p.vy / sp) * 0.7;
+        if (sp > 0.9) {
+          p.vx = (p.vx / sp) * 0.9;
+          p.vy = (p.vy / sp) * 0.9;
         }
         p.x += p.vx;
         p.y += p.vy;
@@ -89,12 +98,12 @@ export default function Backdrop() {
             ctx.stroke();
           }
         }
-        // Faint tether from cursor to nearby nodes
+        // Faint tether from cursor to nearby nodes + soft cursor glow
         const mdx = a.x - mouse.x;
         const mdy = a.y - mouse.y;
         const md2 = mdx * mdx + mdy * mdy;
         if (md2 < MOUSE_DIST * MOUSE_DIST) {
-          const alpha = ((1 - Math.sqrt(md2) / MOUSE_DIST) * 0.2).toFixed(3);
+          const alpha = ((1 - Math.sqrt(md2) / MOUSE_DIST) * 0.3).toFixed(3);
           ctx.strokeStyle = `rgba(83,109,254,${alpha})`;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
