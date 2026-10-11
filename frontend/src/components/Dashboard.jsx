@@ -1,7 +1,7 @@
 import Button from './Button';
-import React from 'react';
-import { Plus } from 'lucide-react';
-import { STAGE_LABELS } from '../api';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Plus, ShieldCheck } from 'lucide-react';
+import { getRankerStatus } from '../api';
 import {
   Bar,
   BarChart,
@@ -19,12 +19,34 @@ const BAND_COLORS = {
   'Weak match': 'var(--muted)',
 };
 
+// Technical view of the real 8-stage pipeline (keys mirror the backend;
+// descriptions state what each stage actually does).
+const TECH_STAGES = [
+  { n: '01', name: 'INGEST', desc: 'PDF/DOCX intake · validation' },
+  { n: '02', name: 'EXTRACT', desc: 'text layer · OCR for scans' },
+  { n: '03', name: 'PREPROCESS', desc: 'clean · tokenize · normalize' },
+  { n: '04', name: 'VECTORIZE', desc: 'TF-IDF + MiniLM-384' },
+  { n: '05', name: 'SKILL_NER', desc: 'match 234-skill taxonomy' },
+  { n: '06', name: 'SCORE', desc: 'weighted 50/25/15/10' },
+  { n: '07', name: 'EXPLAIN', desc: 'evidence · warnings · gaps' },
+  { n: '08', name: 'RANK', desc: 'ranked shortlist · feedback' },
+];
+
 // Real, configured scoring weights — shown, not computed.
 const WEIGHTS = [
   { key: 'skills', label: 'SKILLS', pct: 50, detail: 'taxonomy match × 0.50' },
   { key: 'jd', label: 'JD_SIMILARITY', pct: 25, detail: 'MiniLM cosine × 0.25' },
   { key: 'exp', label: 'EXPERIENCE', pct: 15, detail: 'years vs minimum × 0.15' },
   { key: 'edu', label: 'EDUCATION', pct: 10, detail: 'degree keywords × 0.10' },
+];
+
+// Real fairness rules enforced by the backend.
+const GUARDRAILS = [
+  'Names, colleges and contact info are never scored',
+  'No candidate is ever auto-rejected — all start as “Screened”',
+  'A missing skill means “not detected in the resume text”, never proof of absence',
+  'Scores measure fit to your configured criteria — not probability of hiring success',
+  'A human reviews every shortlist before any decision',
 ];
 
 function fmtDate(iso) {
@@ -43,13 +65,36 @@ export default function Dashboard({ data, loading = false, error = '', onNewScre
   const stats = (data && data.stats) || {};
   const recent = (data && data.recent_sessions) || [];
   const dist = (data && data.score_distribution) || [];
-  const stages = Object.entries(STAGE_LABELS);
+
+  const [ranker, setRanker] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    getRankerStatus().then((r) => { if (alive) setRanker(r); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  // Sessions per day, derived from real session timestamps.
+  const activity = useMemo(() => {
+    const map = {};
+    recent.forEach((s) => {
+      const day = (s.created_at || '').slice(0, 10);
+      if (day) map[day] = (map[day] || 0) + 1;
+    });
+    return Object.entries(map).sort().slice(-14)
+      .map(([day, count]) => ({ day: day.slice(5).replace('-', '/'), count }));
+  }, [recent]);
 
   const telemetry = [
     { label: 'RESUMES_INGESTED', value: stats.total_resumes ?? '—', hint: 'files accepted by the pipeline' },
     { label: 'CANDIDATES_PROCESSED', value: stats.candidates_processed ?? '—', hint: 'full 8-stage analysis completed' },
     { label: 'SHORTLISTED', value: stats.shortlisted ?? '—', hint: 'status set by a recruiter' },
-    { label: 'MEAN_MATCH_SCORE', value: stats.avg_score != null ? `${Math.round(stats.avg_score * 100)}%` : '—', hint: 'across all scored candidates' },
+    { label: 'MEAN_MATCH_SCORE', value: stats.avg_score != null && stats.candidates_processed ? `${Math.round(stats.avg_score * 100)}%` : '—', hint: 'across all scored candidates' },
+    {
+      label: 'LEARNED_RANKER',
+      value: ranker ? (ranker.active ? 'TUNED' : 'BASE') : '—',
+      hint: ranker && ranker.active ? `${ranker.decisions} recruiter decisions learned` : 'default weights · tunes after 5+ mixed decisions',
+    },
+    { label: 'SKILL_TAXONOMY', value: '234', hint: 'curated skill entities for NER' },
   ];
 
   return (
@@ -70,21 +115,30 @@ export default function Dashboard({ data, loading = false, error = '', onNewScre
         <span className="tech-item">EMBEDDINGS&nbsp;<b>all-MiniLM-L6-v2 + TF-IDF</b></span>
         <span className="tech-item">SKILL_TAXONOMY&nbsp;<b>234</b></span>
         <span className="tech-item">SCORING&nbsp;<b>50/25/15/10</b></span>
+        <span className="tech-item">OCR&nbsp;<b>Tesseract</b></span>
         <span className="tech-item">AUTH&nbsp;<b>JWT</b></span>
       </div>
 
-      <div className="tech-pipe rise" style={{ '--d': '100ms' }} aria-label="NLP pipeline stages">
-        {stages.map(([key, label], i) => (
-          <span className="tech-stage" key={key}>
-            <span className="tech-stage-n">{String(i + 1).padStart(2, '0')}</span>
-            {label}
-          </span>
-        ))}
+      <div className="dash-panel rise" style={{ '--d': '100ms' }}>
+        <h3>NLP pipeline</h3>
+        <p className="panel-sub">The eight stages every resume passes through, in order. Streamed live during screening.</p>
+        <div className="pipe-diagram" role="list" aria-label="NLP pipeline stages">
+          {TECH_STAGES.map((s, i) => (
+            <React.Fragment key={s.n}>
+              {i > 0 && <span className="pipe-link" aria-hidden="true">→</span>}
+              <div className="pipe-node" role="listitem">
+                <span className="pipe-node-n">{s.n}</span>
+                <span className="pipe-node-name">{s.name}</span>
+                <span className="pipe-node-desc">{s.desc}</span>
+              </div>
+            </React.Fragment>
+          ))}
+        </div>
       </div>
 
-      <div className="stat-grid">
+      <div className="stat-grid" style={{ marginTop: 16 }}>
         {loading
-          ? [0, 1, 2, 3].map((i) => (
+          ? [0, 1, 2, 3, 4, 5].map((i) => (
             <div className="stat-card" key={i}>
               <div className="stat-value skeleton" style={{ width: '55%' }}>&nbsp;</div>
               <div className="stat-label skeleton" style={{ width: '75%', marginTop: 10 }}>&nbsp;</div>
@@ -121,7 +175,7 @@ export default function Dashboard({ data, loading = false, error = '', onNewScre
 
         <div className="dash-panel rise" style={{ '--d': '210ms' }}>
           <h3>Score distribution</h3>
-          <p className="panel-sub">Candidates per verdict band.</p>
+          <p className="panel-sub">Candidates per verdict band. Bands: ≥65% strong · 40–65% review · &lt;40% weak.</p>
           {loading ? (
             <div className="skeleton" style={{ height: 240, borderRadius: 12 }}>&nbsp;</div>
           ) : error ? <div className="empty-note">Score distribution is currently unavailable.</div> : dist.every((d) => !d.count) ? (
@@ -148,7 +202,42 @@ export default function Dashboard({ data, loading = false, error = '', onNewScre
         </div>
       </div>
 
-      <div className="dash-panel rise" style={{ '--d': '260ms', marginTop: 16 }}>
+      <div className="dash-cols" style={{ marginTop: 16 }}>
+        <div className="dash-panel rise" style={{ '--d': '240ms' }}>
+          <h3>Screening activity</h3>
+          <p className="panel-sub">Sessions started per day.</p>
+          {loading ? (
+            <div className="skeleton" style={{ height: 180, borderRadius: 12 }}>&nbsp;</div>
+          ) : error ? <div className="empty-note">Activity is currently unavailable.</div> : activity.length === 0 ? (
+            <div className="empty-note">No sessions yet — activity will appear here.</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={activity} margin={{ top: 10, right: 10, left: -18, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false} />
+                <XAxis dataKey="day" tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={{ stroke: 'var(--line)' }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--muted)' }} tickLine={false} axisLine={false} width={28} />
+                <Tooltip cursor={{ fill: 'var(--accent-soft)' }} content={({ active, payload }) => active && payload?.length ? <div className="chart-tooltip"><strong>{payload[0].payload.day}</strong>{payload[0].value} session{payload[0].value === 1 ? '' : 's'}</div> : null} />
+                <Bar dataKey="count" name="Sessions" radius={[4, 4, 0, 0]} barSize={26} fill="var(--brand)" background={{ fill: 'var(--line)', radius: 6 }} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        <div className="dash-panel rise" style={{ '--d': '260ms' }}>
+          <h3>Fairness guardrails</h3>
+          <p className="panel-sub">Rules the pipeline enforces on every run.</p>
+          <ul className="guard-list">
+            {GUARDRAILS.map((g) => (
+              <li key={g}>
+                <ShieldCheck size={16} />
+                <span>{g}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <div className="dash-panel rise" style={{ '--d': '280ms', marginTop: 16 }}>
         <h3>Session log</h3>
         <p className="panel-sub">Recent screening runs. Select a row to reopen it.</p>
         {loading ? (
