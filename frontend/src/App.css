@@ -4,11 +4,11 @@
    ========================================================================== */
 
 :root {
-  --bg-0: #080B14;
-  --bg-1: #0D1220;
-  --bg-2: #111827;
-  --card: #121A2B;
-  --card-2: #16203366;
+  --bg-0: #0C1322;
+  --bg-1: #111A2E;
+  --bg-2: #16213A;
+  --card: #16233C;
+  --card-2: #1A274266;
   --brand: #8B5CF6;
   --brand-soft: rgba(139, 92, 246, 0.12);
   --brand-softer: rgba(139, 92, 246, 0.07);
@@ -71,9 +71,9 @@ body::before {
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(900px 480px at 12% -8%, rgba(139, 92, 246, 0.14), transparent 62%),
-    radial-gradient(760px 420px at 88% 4%, rgba(34, 211, 238, 0.06), transparent 60%),
-    radial-gradient(1000px 700px at 50% 115%, rgba(139, 92, 246, 0.07), transparent 65%),
+    radial-gradient(900px 480px at 12% -8%, rgba(139, 92, 246, 0.18), transparent 62%),
+    radial-gradient(760px 420px at 88% 4%, rgba(34, 211, 238, 0.08), transparent 60%),
+    radial-gradient(1000px 700px at 50% 115%, rgba(139, 92, 246, 0.09), transparent 65%),
     var(--bg-0);
 }
 body::after {
@@ -193,7 +193,7 @@ textarea { resize: vertical; min-height: 90px; }
 
 .app-sidebar {
   width: var(--sidebar-w); flex-shrink: 0;
-  background: linear-gradient(180deg, #0C1120 0%, var(--bg-1) 100%);
+  background: linear-gradient(180deg, #0E1628 0%, var(--bg-1) 100%);
   border-right: 1px solid var(--border-soft);
   display: flex; flex-direction: column;
   position: sticky; top: 0; height: 100vh; z-index: 40;
@@ -485,7 +485,7 @@ textarea { resize: vertical; min-height: 90px; }
   animation: fade-in 0.18s ease;
 }
 .modal {
-  background: linear-gradient(180deg, #141C30, var(--bg-1));
+  background: linear-gradient(180deg, #18263F, var(--bg-1));
   border: 1px solid var(--border); border-radius: var(--r-xl);
   max-width: 1020px; width: 100%; padding: 32px;
   box-shadow: var(--shadow-3); position: relative;
@@ -706,7 +706,7 @@ textarea { resize: vertical; min-height: 90px; }
   background:
     radial-gradient(600px 400px at 30% 20%, rgba(139, 92, 246, 0.22), transparent 65%),
     radial-gradient(500px 380px at 75% 80%, rgba(34, 211, 238, 0.10), transparent 60%),
-    #0A0F1E;
+    #0D1528;
   border-right: 1px solid var(--border-soft);
   display: flex; align-items: center; justify-content: center; padding: 48px;
 }
@@ -729,8 +729,8 @@ textarea { resize: vertical; min-height: 90px; }
 }
 .auth-brand h1 { margin-bottom: 14px; }
 .auth-sub { color: var(--text-2); font-size: 16px; margin-bottom: 30px; }
-.auth-points { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
-.auth-points li { display: flex; gap: 14px; align-items: flex-start; font-size: 14px; color: var(--text-2); }
+.auth-points { list-style: none; margin: 26px 0 0; padding: 0; display: flex; flex-direction: column; gap: 13px; }
+.auth-points li { display: flex; gap: 13px; align-items: center; font-size: 14px; color: var(--text-2); }
 .auth-point-ico {
   width: 36px; height: 36px; border-radius: 11px; flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -744,14 +744,27 @@ textarea { resize: vertical; min-height: 90px; }
   min-height: 100vh; display: flex; flex-direction: column; gap: 16px;
   align-items: center; justify-content: center; color: var(--text-2);
 }
-.demo-box {
-  margin-top: 22px; background: rgba(34, 211, 238, 0.05);
+.demo-strip {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  margin-top: 16px; padding: 11px 14px;
+  background: rgba(34, 211, 238, 0.05);
   border: 1px dashed rgba(34, 211, 238, 0.35); border-radius: var(--r-md);
-  padding: 14px 16px; font-size: 13px; color: var(--text-2);
+  color: var(--text-2); font-size: 13px; cursor: pointer; text-align: left;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
-.demo-label { font-weight: 700; color: var(--accent); font-size: 11.5px; letter-spacing: 0.09em; text-transform: uppercase; display: block; margin-bottom: 6px; }
+.demo-strip:hover { background: rgba(34, 211, 238, 0.10); border-color: rgba(34, 211, 238, 0.55); }
+.demo-strip-label {
+  font-weight: 700; color: var(--accent); font-size: 11px;
+  letter-spacing: 0.09em; text-transform: uppercase; white-space: nowrap;
+}
+.demo-strip .demo-creds { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.demo-go { color: var(--accent); font-weight: 600; white-space: nowrap; }
 .demo-creds { font-family: var(--font-mono); font-size: 13px; }
-.demo-note { font-size: 12px; color: var(--text-3); margin-top: 6px; }
+.link-btn {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--violet-lt); font-weight: 600; font-size: 14px;
+}
+.link-btn:hover { text-decoration: underline; }
 
 /* --- States: skeleton / empty / misc ---------------------------------------- */
 .skeleton {

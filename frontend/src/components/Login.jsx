@@ -67,9 +67,9 @@ export default function Login({ onAuth }) {
   }
 
   const points = [
-    { icon: <EyeIcon />, title: 'Watch the analysis happen', text: 'Every resume moves through a live, 8-stage NLP pipeline — nothing hidden.' },
-    { icon: <ListIcon />, title: 'Ranked, explainable shortlists', text: 'Scores with the reasoning shown: matched skills, gaps, and what drove the number.' },
-    { icon: <DocIcon />, title: 'You decide, always', text: 'Rankings assist — no candidate is ever rejected automatically.' },
+    { icon: <EyeIcon />, text: 'Watch every resume move through a live 8-stage NLP pipeline' },
+    { icon: <ListIcon />, text: 'Ranked shortlists with the reasoning shown' },
+    { icon: <DocIcon />, text: 'Rankings assist — no one is ever auto-rejected' },
   ];
 
   return (
@@ -86,18 +86,15 @@ export default function Login({ onAuth }) {
             Resume Screener
           </div>
           <h1>Hire with evidence, not gut feel.</h1>
-          <p className="lead">
-            Screen whole batches of resumes against a role with NLP — and see exactly
-            why each candidate ranks where they do.
+          <p className="auth-sub">
+            Screen batches of resumes with NLP — and see exactly why each
+            candidate ranks where they do.
           </p>
           <ul className="auth-points">
             {points.map((p) => (
-              <li key={p.title}>
+              <li key={p.text}>
                 <span className="auth-point-ico">{p.icon}</span>
-                <div>
-                  <strong>{p.title}</strong>
-                  <span>{p.text}</span>
-                </div>
+                <span>{p.text}</span>
               </li>
             ))}
           </ul>
@@ -105,51 +102,53 @@ export default function Login({ onAuth }) {
       </div>
 
       <div className="auth-form-side">
-        <h2>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
-        <p className="auth-sub">
-          {mode === 'login' ? 'Sign in to your recruiter workspace.'
-            : 'Create your recruiter account to start screening.'}
-        </p>
+        <div className="auth-form">
+          <h2>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
+          <p className="auth-sub">
+            {mode === 'login' ? 'Sign in to your recruiter workspace.'
+              : 'Create your recruiter account to start screening.'}
+          </p>
 
-        {demo && (
-          <Button type="button" className="demo-box" onClick={fillDemo} title="Fill in the demo credentials">
-            <span className="demo-label">DEMO ACCOUNT — click to fill</span>
-            <span className="demo-creds">{demo.email} · {demo.password}</span>
-            <span className="demo-note">Demo auth for trying the product — not for real accounts.</span>
-          </Button>
-        )}
-
-        <form onSubmit={submit} className="auth-form">
-          {mode === 'signup' && (
-            <label>
-              <span>Your name</span>
-              <input value={name} onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Priya Sharma" autoComplete="name" />
+          <form onSubmit={submit}>
+            {mode === 'signup' && (
+              <label className="field">
+                <span className="field-label">Your name</span>
+                <input value={name} onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Priya Sharma" autoComplete="name" />
+              </label>
+            )}
+            <label className="field">
+              <span className="field-label">Email</span>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com" autoComplete="email" required />
             </label>
-          )}
-          <label>
-            <span>Email</span>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@company.com" autoComplete="email" required />
-          </label>
-          <label>
-            <span>Password</span>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              placeholder={mode === 'signup' ? 'At least 6 characters' : 'Your password'}
-              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} required />
-          </label>
-          {error && <div className="form-error" role="alert">{error}</div>}
-          <Button type="submit" className="btn-primary btn-block" disabled={busy}>
-            {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
-          </Button>
-        </form>
+            <label className="field">
+              <span className="field-label">Password</span>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                placeholder={mode === 'signup' ? 'At least 6 characters' : 'Your password'}
+                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} required />
+            </label>
+            {error && <div className="form-error" role="alert">{error}</div>}
+            <Button type="submit" className="btn-primary btn-block" disabled={busy}>
+              {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
+            </Button>
+          </form>
 
-        <div className="auth-switch">
-          {mode === 'login' ? (
-            <>New here? <Button type="button" onClick={() => { setMode('signup'); setError(''); }}>Create an account</Button></>
-          ) : (
-            <>Have an account? <Button type="button" onClick={() => { setMode('login'); setError(''); }}>Sign in</Button></>
+          {demo && (
+            <Button type="button" className="demo-strip" onClick={fillDemo} title="Fill in the demo credentials">
+              <span className="demo-strip-label">Demo account</span>
+              <span className="demo-creds">{demo.email} · {demo.password}</span>
+              <span className="demo-go">Fill →</span>
+            </Button>
           )}
+
+          <div className="auth-switch">
+            {mode === 'login' ? (
+              <>New here? <Button type="button" className="link-btn" onClick={() => { setMode('signup'); setError(''); }}>Create an account</Button></>
+            ) : (
+              <>Have an account? <Button type="button" className="link-btn" onClick={() => { setMode('login'); setError(''); }}>Sign in</Button></>
+            )}
+          </div>
         </div>
       </div>
     </div>
