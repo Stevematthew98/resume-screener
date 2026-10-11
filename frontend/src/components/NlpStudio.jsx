@@ -213,7 +213,7 @@ export default function NlpStudio({
                           </span>
                           <span className="pipe-row-meta">
                             <span className={`st-badge ${st}`}>{st}</span>
-                            {durations[s.execKey] != null && <span className="mono pipe-dur">{fmtDur(durations[s.execKey])}</span>}
+                            {!s.sub && durations[s.execKey] != null && <span className="mono pipe-dur">{fmtDur(durations[s.execKey])}</span>}
                           </span>
                         </Button>
                       </div>
@@ -237,7 +237,7 @@ export default function NlpStudio({
           <StageWorkbench
             stage={stage}
             execStatus={specStatus}
-            durationMs={durations[stage.execKey]}
+            durationMs={stage.sub ? null : durations[stage.execKey]}
             detail={(exec[stage.execKey] || {}).detail}
             ctx={ctx}
           />
