@@ -351,35 +351,6 @@ textarea { resize: vertical; min-height: 90px; }
   display: inline-flex; gap: 8px; align-items: center; flex-shrink: 0;
 }
 .tech-stage-n { color: var(--brand-ink); font-weight: 600; }
-/* Pipeline diagram: 8 technical stage nodes with connectors */
-.pipe-diagram {
-  display: flex; align-items: stretch; gap: 2px;
-  overflow-x: auto; padding: 4px 2px 6px; margin-top: 6px;
-  scrollbar-width: thin;
-}
-.pipe-node {
-  flex: 1 0 128px; min-width: 128px; max-width: 190px;
-  background: #fff; border: 1px solid var(--border); border-radius: 10px;
-  padding: 10px 12px; display: flex; flex-direction: column; gap: 3px;
-  box-shadow: var(--shadow-1); position: relative;
-}
-.pipe-node-n {
-  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
-  color: var(--brand-ink); letter-spacing: 0.08em;
-}
-.pipe-node-name {
-  font-family: var(--font-mono); font-size: 12.5px; font-weight: 700;
-  letter-spacing: 0.04em; color: var(--text);
-}
-.pipe-node-desc { font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
-.pipe-link {
-  align-self: center; flex-shrink: 0; padding: 0 3px;
-  color: var(--brand); font-weight: 700; font-size: 14px;
-}
-/* Fairness guardrails */
-.guard-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
-.guard-list li { display: flex; gap: 12px; align-items: flex-start; font-size: 13.5px; color: var(--text-2); }
-.guard-list svg { color: var(--green-ink); flex-shrink: 0; margin-top: 2px; }
 .tech-card .stat-value { letter-spacing: -0.01em; }
 .mono-label {
   font-family: var(--font-mono); font-size: 12px; font-weight: 600;
