@@ -29,6 +29,9 @@ from .ranker import skill_weights
 # Job spec normalization
 # ----------------------------------------------------------------------------
 
+_DETECTION_NOTE = ("Skills listed as not detected were not found in the resume text. "
+                   "'Not detected' is not proof the candidate lacks the skill.")
+
 DEFAULT_JOB = {
     "title": "",
     "company": "",
@@ -82,6 +85,7 @@ def _skills_component(resume_skills: list, required: list, preferred: list,
         return {
             "value": 0.0, "basis": basis_note, "matched": [], "missing": [],
             "personalization": {"active": False, "adjustments": [], "note": ""},
+            "detection_note": _DETECTION_NOTE,
             "note": "No skills to compare against — the job lists no skills and none were detected.",
         }
     rset, bset = set(resume_skills), set(basis)
@@ -97,12 +101,15 @@ def _skills_component(resume_skills: list, required: list, preferred: list,
     else:
         value = len(matched) / len(bset)
     pref_matched = sorted(rset & set(preferred)) if preferred else []
+    pref_missing = sorted(set(preferred) - rset) if preferred else []
     return {
         "value": round(max(0.0, min(1.0, value)), 4),
         "basis": basis_note,
         "matched": matched,
         "missing": missing,
+        "detection_note": _DETECTION_NOTE,
         "preferred_matched": pref_matched,
+        "preferred_missing": pref_missing,
         "personalization": {
             "active": bool(adjustments),
             "decisions": (personalization or {}).get("decisions", 0),
@@ -240,7 +247,7 @@ def build_candidate(resume_id: str, filename: str, job: dict, stages: dict,
         explanation.append(
             f"Skills (50% of the score): {len(skills['matched'])} of {n_req} "
             f"{skills['basis']} found — {', '.join(skills['matched']) or 'none'}."
-            + (f" Missing: {', '.join(skills['missing'])}." if skills["missing"] else "")
+            + (f" Not detected in the resume: {', '.join(skills['missing'])}." if skills["missing"] else "")
         )
     else:
         explanation.append("Skills (50% of the score): nothing to compare — " + skills["note"])
@@ -292,7 +299,9 @@ def build_candidate(resume_id: str, filename: str, job: dict, stages: dict,
                        "label": "Skills match",
                        "detail": skills["note"],
                        "matched": skills["matched"], "missing": skills["missing"],
-                       "preferred_matched": skills.get("preferred_matched", [])},
+                       "detection_note": skills.get("detection_note", _DETECTION_NOTE),
+                       "preferred_matched": skills.get("preferred_matched", []),
+                       "preferred_missing": skills.get("preferred_missing", [])},
             "jd_similarity": {"weight": 0.25, "value": jd_sim["value"],
                               "points": int(round(contributions["jd_similarity"] * 100)),
                               "label": "Job description fit",
@@ -309,6 +318,8 @@ def build_candidate(resume_id: str, filename: str, job: dict, stages: dict,
         "explanation": explanation,
         "matched_skills": skills["matched"],
         "missing_skills": skills["missing"],
+        "detection_note": skills.get("detection_note", _DETECTION_NOTE),
+        "warnings": stages["step7_result"].get("warnings", []),
         "experience_years": exp_years,
         "degrees": degrees,
         "job_titles": s3.get("job_titles", []),
@@ -342,7 +353,9 @@ def ranking_row(candidate: dict) -> dict:
 def screen_one_resume(file_bytes: bytes, filename: str, job: dict, resume_id: str,
                       personalization: dict = None):
     """Generator yielding ('stage', {...}) per completed stage, then
-    ('candidate', candidate_dict). Shares the exact pipeline as /api/analyze."""
+    ('candidate', candidate_dict) — or ('error', {'message': ...}) when text
+    extraction failed, so a bad file is never scored as a weak match.
+    Shares the exact pipeline as /api/analyze."""
     stages = {}
     for key, out in run_pipeline_stages(file_bytes, filename, job["jd_text"],
                                        job["min_experience_years"]):
@@ -354,4 +367,8 @@ def screen_one_resume(file_bytes: bytes, filename: str, job: dict, resume_id: st
             "summary": stage_summary(key, out),
             "detail": out,
         })
+    extraction_error = stages.get("step2_extraction", {}).get("extraction_error")
+    if extraction_error:
+        yield ("error", {"message": extraction_error, "filename": filename})
+        return
     yield ("candidate", build_candidate(resume_id, filename, job, stages, personalization))

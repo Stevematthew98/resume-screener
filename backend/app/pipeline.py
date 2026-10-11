@@ -356,19 +356,41 @@ def run_pipeline_stages(file_bytes: bytes, filename: str, job_description: str,
 
     # ---- Step 2: extraction --------------------------------------------------
     jd_text = (job_description or "").strip()
-    if ext == "pdf":
+    extraction_error = None
+    if not file_bytes:
+        raw_text, method, ocr_used = "", "empty", False
+        extraction_error = "No file content was received — the upload appears to be empty."
+    elif ext == "pdf":
         raw_text, method, ocr_used = extract_text_pdf(file_bytes)
     elif ext in ("docx", "doc"):
         raw_text, method, ocr_used = extract_text_docx(file_bytes), "python-docx", False
     else:
         raw_text, method, ocr_used = "", "unsupported", False
+        extraction_error = (
+            f"Unsupported file type '.{ext}'. Upload a PDF or DOCX resume."
+            if ext else "Could not determine the file type. Upload a PDF or DOCX resume."
+        )
     raw_text = raw_text.strip()
+    if extraction_error is None and not raw_text:
+        extraction_error = (
+            "No readable text could be extracted from this file. It may be empty, "
+            "image-only (OCR recovered nothing), corrupted, or password-protected."
+        )
+    warnings = []
+    if ocr_used:
+        warnings.append("Scanned document — text was recovered with OCR and may contain errors.")
     sections = split_sections(raw_text) if raw_text else {k: "" for k in SECTION_NAMES}
+    words_extracted = len(raw_text.split())
+    if extraction_error is None and words_extracted < 30:
+        warnings.append(
+            f"Very little text extracted ({words_extracted} words) — results may be unreliable."
+        )
     step2 = {
         "extraction_method": method,
         "ocr_used": ocr_used,
+        "extraction_error": extraction_error,
         "chars_extracted": len(raw_text),
-        "words_extracted": len(raw_text.split()),
+        "words_extracted": words_extracted,
         "sections_found": [k for k, v in sections.items() if v.strip()],
         "section_previews": {k: redact_echo(v) for k, v in sections.items() if v.strip()},
         "sections_text": {k: redact_echo(v, 4000) for k, v in sections.items() if v.strip()},
@@ -384,6 +406,15 @@ def run_pipeline_stages(file_bytes: bytes, filename: str, job_description: str,
     exp_years = extract_experience_years(raw_text)
     degrees = extract_degrees(sections["education"] or raw_text)
     titles = extract_job_titles(sections["experience"])
+    if extraction_error is None:
+        if not sections["skills"].strip():
+            warnings.append("No dedicated skills section found — skills were searched across the whole document.")
+        if not resume_skills:
+            warnings.append("No recognizable skills detected in the resume.")
+        if exp_years == 0:
+            warnings.append("Could not determine years of experience from dates or mentions.")
+        if not degrees:
+            warnings.append("No degree information detected in the resume.")
     step3 = {
         "tokens_after_preprocessing": len(tokens),
         "unique_lemmas": len(set(tokens)),
@@ -441,10 +472,14 @@ def run_pipeline_stages(file_bytes: bytes, filename: str, job_description: str,
         band = "Weak match"
     matched = sorted(set(jd_skills) & set(resume_skills))
     missing = sorted(set(jd_skills) - set(resume_skills))
+    if not jd_skills:
+        warnings.append("No skills detected in the job description — skill matching has limited signal.")
     step5 = {
         "final_score": score,
         "band": band,
         "band_note": "Assessment, not a guarantee of job performance.",
+        "detection_note": ("Skills listed as not detected were not found in the resume text. "
+                           "'Not detected' is not proof the candidate lacks the skill."),
         "hard_filter": {
             "min_experience_years": min_experience_years,
             "candidate_experience_years": exp_years,
@@ -486,9 +521,11 @@ def run_pipeline_stages(file_bytes: bytes, filename: str, job_description: str,
         "score": score,
         "matched_skills": matched,
         "missing_skills": missing,
+        "detection_note": step5["detection_note"],
         "experience_years": exp_years,
         "degrees": degrees,
         "job_titles": titles,
+        "warnings": warnings,
         "meets_experience_requirement": meets_experience,
         "created_at": datetime.utcnow().isoformat() + "Z",
     }
@@ -556,7 +593,11 @@ def stage_summary(stage_key: str, out: dict) -> str:
 
 def analyze_resume(file_bytes: bytes, filename: str, job_description: str,
                    min_experience_years: float = 0.0) -> dict:
-    """Classic full result (unchanged shape) — collects the stage generator."""
+    """Classic full result (unchanged shape) — collects the stage generator.
+
+    Adds `processing_error` (None when extraction succeeded): callers should
+    treat a non-None value as a failed analysis, not a valid weak match.
+    """
     result: dict = {}
     analysis_id = None
     for key, out in run_pipeline_stages(file_bytes, filename, job_description,
@@ -564,4 +605,5 @@ def analyze_resume(file_bytes: bytes, filename: str, job_description: str,
         result[key] = out
         if key == "step1_ingest":
             analysis_id = out["analysis_id"]
-    return {"analysis_id": analysis_id, **result}
+    processing_error = result.get("step2_extraction", {}).get("extraction_error")
+    return {"analysis_id": analysis_id, "processing_error": processing_error, **result}
