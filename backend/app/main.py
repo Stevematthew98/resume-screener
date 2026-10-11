@@ -96,6 +96,9 @@ class JobIn(BaseModel):
 
 @app.on_event("startup")
 def _startup():
+    # Fail closed: never boot production with the insecure dev JWT fallback.
+    if os.getenv("RAILWAY_ENVIRONMENT") == "production" and not os.getenv("JWT_SECRET", "").strip():
+        raise RuntimeError("JWT_SECRET must be set in production.")
     # Models are pre-downloaded into the image at build time; this just loads them.
     ensure_models()
     init_db()
