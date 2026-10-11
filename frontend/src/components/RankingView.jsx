@@ -227,12 +227,15 @@ function CandidateDetail({ candidate, statusInfo, onClose, onStatus, readOnly = 
                 <span key={s} className="chip chip-green">✓ {s}</span>
               )) : <span className="muted">None of the required skills were found.</span>}
             </div>
-            <div className="chip-group-label">Missing</div>
+            <div className="chip-group-label">Not detected</div>
             <div className="chips">
               {candidate.missing_skills.length ? candidate.missing_skills.map((s) => (
                 <span key={s} className="chip chip-amber">{s}</span>
               )) : <span className="muted">Nothing missing.</span>}
             </div>
+            {candidate.components?.skills?.detection_note && (
+              <p className="hint" style={{ marginTop: 8 }}>{candidate.components.skills.detection_note}</p>
+            )}
             {candidate.components?.skills?.preferred_matched?.length > 0 && (
               <>
                 <div className="chip-group-label">Preferred skills found (bonus, not scored)</div>
@@ -435,7 +438,7 @@ export default function RankingView({ job, ranking, candidates, statuses, onSele
                     <td>
                       <div className="skill-mini">
                         <span className="mini-green">✓ {r.matched_skills.length}</span>
-                        <span className="mini-amber">○ {r.missing_skills.length} missing</span>
+                        <span className="mini-amber">○ {r.missing_skills.length} not detected</span>
                       </div>
                     </td>
                     <td><StatusChip status={r.status} /></td>
