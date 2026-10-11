@@ -1,10 +1,13 @@
 // API base URL: VITE_API_URL in production (set on Vercel), localhost only
-// as a local-development fallback. A production build without VITE_API_URL
-// fails fast instead of silently pointing at localhost.
+// as a local-development fallback. Never throw at module load — a missing
+// base URL must not blank the whole app; it fails only when an API call is
+// actually attempted.
 const API_URL = (import.meta.env.VITE_API_URL
   || (import.meta.env.DEV ? 'http://localhost:8000' : '')).replace(/\/$/, '');
-if (!API_URL) {
-  throw new Error('VITE_API_URL is not configured for this build.');
+
+function requireApiUrl() {
+  if (!API_URL) throw new Error('VITE_API_URL is not configured for this build.');
+  return API_URL;
 }
 
 export const STAGE_ORDER = [
@@ -53,7 +56,7 @@ export async function apiFetch(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
   const tok = getToken();
   if (tok) headers['Authorization'] = `Bearer ${tok}`;
-  const res = await fetch(`${API_URL}${path}`, { ...opts, headers });
+  const res = await fetch(`${requireApiUrl()}${path}`, { ...opts, headers });
   if (res.status === 401) {
     setToken(null);
     const err = new Error('SESSION_EXPIRED');
@@ -105,7 +108,7 @@ export async function getMe() {
 }
 
 export async function getDemoCreds() {
-  const res = await fetch(`${API_URL}/api/auth/demo`);
+  const res = await fetch(`${requireApiUrl()}/api/auth/demo`);
   if (!res.ok) return null;
   return res.json();
 }
@@ -170,7 +173,7 @@ export async function streamScreen(files, job, onEvent, opts = {}) {
   if (tok) headers['Authorization'] = `Bearer ${tok}`;
   let res;
   try {
-    res = await fetch(`${API_URL}/api/screen/stream`, { method: 'POST', headers, body: form });
+    res = await fetch(`${requireApiUrl()}/api/screen/stream`, { method: 'POST', headers, body: form });
   } catch {
     throw new Error('Could not reach the screening service. Please check your connection and try again.');
   }
