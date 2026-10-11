@@ -857,6 +857,56 @@ textarea { resize: vertical; min-height: 90px; }
 .code-line { display: flex; min-width: max-content; padding: 0 16px; }
 .code-ln { width: 34px; flex-shrink: 0; text-align: right; margin-right: 14px; color: #5B6478; user-select: none; }
 
+/* ---- Studio compact mode: fit the first screen without scrolling ---- */
+.studio { gap: 10px; }
+.studio .card { padding: 14px 16px; }
+.studio-top-head { gap: 16px; }
+.studio-top-head h2 { font-size: 17px; }
+.studio-top-head .hint { font-size: 12px; margin: 2px 0 0; }
+.studio-metrics { gap: 18px; }
+.sm-v { font-size: 13.5px; }
+.sm-k { font-size: 10px; }
+.studio-top .progress-track { margin-top: 10px; }
+.studio-top .progress-meta { font-size: 11.5px; margin-top: 6px; }
+.studio-panels { gap: 10px; }
+.studio-left .hint, .studio-right .hint { font-size: 11.5px; }
+.pipe-groups { gap: 8px; margin-top: 8px; }
+.pipe-group-label { font-size: 10px; margin-bottom: 3px; }
+.pipe-row { padding: 4px 8px; gap: 8px; border-radius: 8px; }
+.pipe-dot { width: 20px; height: 20px; font-size: 9.5px; }
+.pipe-rail { width: 20px; }
+.pipe-vline { min-height: 8px; margin: 2px 0; }
+.pipe-name { font-size: 12px; }
+.pipe-tagline { font-size: 10px; line-height: 1.35; }
+.pipe-icon { width: 12px; height: 12px; }
+.pipe-sub-tag { font-size: 9.5px; padding: 0 4px; }
+.st-badge { font-size: 9px; padding: 2px 7px; }
+.pipe-dur { font-size: 10px; }
+.studio-live-btn { margin-top: 8px; }
+.wb-head h3 { font-size: 15px; }
+.wb-eyebrow { font-size: 10px; }
+.wb-tabs { margin: 10px 0 12px; }
+.wb-tab { font-size: 12px; padding: 7px 10px; }
+.wb-body { min-height: 200px; }
+.wb-purpose { font-size: 12.5px; margin-bottom: 10px; }
+.io-box { padding: 9px 11px; }
+.io-title { font-size: 10px; margin-bottom: 6px; }
+.io-text { font-size: 11px; }
+.drow { font-size: 11.5px; gap: 10px; }
+.dkey { font-size: 10px; min-width: 96px; }
+.viz-tile { padding: 8px 11px; min-width: 100px; }
+.viz-tile-v { font-size: 13px; }
+.viz-h { font-size: 11px; margin-bottom: 8px; }
+.viz-list li { font-size: 12.5px; }
+.viz-note { font-size: 12.5px; padding: 10px 12px; }
+.chip { font-size: 10.5px; padding: 1px 7px; }
+.code-pre code { font-size: 11.5px; line-height: 1.6; }
+.code-title { font-size: 12.5px; }
+.rank-list li { padding: 7px 11px; font-size: 12px; }
+.section-preview { font-size: 11.5px; }
+.studio-done h2 { font-size: 17px; }
+.studio-done-actions { margin-top: 12px; }
+
 /* --- Screening: Part 1 · Live pipeline stepper -------------------------------- */
 .resume-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 20px; }
 .resume-tab {
