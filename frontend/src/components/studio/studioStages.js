@@ -9,6 +9,8 @@
  * execKey '__batch__' = batch-level (ranking), resolved from batch_complete.
  */
 
+import { STAGE_LABELS } from '../api';
+
 export const GROUPS = [
   'Document Processing',
   'Linguistic Processing',
@@ -602,8 +604,11 @@ export const STAGES_ENRICHED = STAGES.map((s) => ({
   ...s,
   groupName: GROUPS[s.group],
   parentName: s.sub
-    ? (STAGES.find((x) => x.execKey === s.execKey && !x.sub)?.name || '')
+    ? (STAGES.find((x) => x.execKey === s.execKey && !x.sub)?.name
+       || STAGE_LABELS[s.execKey]
+       || '')
     : '',
+  firstOfExec: STAGES.find((x) => x.execKey === s.execKey)?.n === s.n,
 }));
 
 export function stageByKey(execKey) {
