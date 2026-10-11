@@ -1,3 +1,5 @@
+import Button from './Button';
+import { BriefcaseBusiness, History, Plus, Trash2, ArrowRight } from 'lucide-react';
 import React, { useState } from 'react';
 import { deleteJob } from '../api';
 
@@ -6,7 +8,7 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export default function JobsView({ jobs, onRefresh, onScreenJob, onNewJob }) {
+export default function JobsView({ jobs, loading = false, error: loadError = '', onRefresh, onScreenJob, onNewJob }) {
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
 
@@ -31,18 +33,18 @@ export default function JobsView({ jobs, onRefresh, onScreenJob, onNewJob }) {
           <h2>Job profiles</h2>
           <p>Save roles once, then screen candidates against any of them.</p>
         </div>
-        <button type="button" className="btn-primary" onClick={onNewJob}>
-          + New screening
-        </button>
+        <Button type="button" className="btn-primary" onClick={onNewJob}>
+          <Plus size={16} /> New screening
+        </Button>
       </div>
 
       {error && <div className="form-error">{error}</div>}
 
-      {jobs.length === 0 ? (
-        <div className="empty-card">
+      {loading ? <div className="stat-grid" role="status" aria-label="Loading jobs">{[0,1,2].map(i => <div key={i} className="skeleton" style={{height: 140}} />)}</div> : loadError ? <div className="empty-note">Jobs are currently unavailable.</div> : jobs.length === 0 ? (
+        <div className="empty-card"><div className="empty-ico"><BriefcaseBusiness size={22} /></div>
           <h3>No job profiles yet</h3>
           <p>Start a screening and your job will be saved here automatically — or create one from scratch.</p>
-          <button type="button" className="btn-primary" onClick={onNewJob}>Start your first screening →</button>
+          <Button type="button" className="btn-primary" onClick={onNewJob}>Start your first screening →</Button>
         </div>
       ) : (
         <div className="job-grid">
@@ -66,13 +68,13 @@ export default function JobsView({ jobs, onRefresh, onScreenJob, onNewJob }) {
                 {' · '}saved {fmtDate(j.created_at)}
               </div>
               <div className="job-actions">
-                <button type="button" className="btn-primary btn-sm" onClick={() => onScreenJob(j)}>
-                  Screen candidates →
-                </button>
-                <button type="button" className="btn-ghost btn-sm" disabled={busyId === j.id}
+                <Button type="button" className="btn-primary btn-sm" onClick={() => onScreenJob(j)}>
+                  Screen candidates <ArrowRight size={14} />
+                </Button>
+                <Button type="button" className="btn-ghost btn-sm" disabled={busyId === j.id}
                   onClick={() => handleDelete(j.id)}>
-                  {busyId === j.id ? 'Deleting…' : 'Delete'}
-                </button>
+                  {busyId === j.id ? 'Deleting…' : <><Trash2 size={14} /> Delete</>}
+                </Button>
               </div>
             </div>
           ))}

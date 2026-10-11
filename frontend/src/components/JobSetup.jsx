@@ -1,3 +1,4 @@
+import Button from './Button';
 import React, { useRef, useState } from 'react';
 
 function Field({ label, hint, children }) {
@@ -48,7 +49,7 @@ export default function JobSetup({ job, setJob, files, setFiles, onScreen, error
         <p className="hint">The screener compares every resume against this. The more specific the skills, the sharper the ranking.</p>
 
         <div className="form-row">
-          <Field label="Job title">
+          <Field label="Job title *">
             <input type="text" value={job.title} onChange={(e) => set('title', e.target.value)}
               placeholder="e.g. Senior Backend Engineer" />
           </Field>
@@ -58,7 +59,7 @@ export default function JobSetup({ job, setJob, files, setFiles, onScreen, error
           </Field>
         </div>
 
-        <Field label="Job description" hint="Paste the full posting — responsibilities, must-haves, nice-to-haves.">
+        <Field label="Job description *" hint="Paste the full posting — responsibilities, must-haves, nice-to-haves.">
           <textarea rows={7} value={job.jdText} onChange={(e) => set('jdText', e.target.value)}
             placeholder="We are hiring a Senior Backend Engineer to build payment microservices. Must have: Python, Django, PostgreSQL, Docker…" />
         </Field>
@@ -91,6 +92,8 @@ export default function JobSetup({ job, setJob, files, setFiles, onScreen, error
         <p className="hint">Add one resume — or a whole batch. Each file runs through the full screening pipeline.</p>
 
         <div
+          role="button" tabIndex={0} aria-label="Upload resumes"
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.current?.click(); } }}
           className={`dropzone ${dragOver ? 'over' : ''}`}
           onClick={() => fileInput.current?.click()}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -116,18 +119,18 @@ export default function JobSetup({ job, setJob, files, setFiles, onScreen, error
                 <span className="file-badge">{f.name.split('.').pop().toUpperCase()}</span>
                 <span className="file-name">{f.name}</span>
                 <span className="file-size">{(f.size / 1024).toFixed(0)} KB</span>
-                <button type="button" className="file-remove" onClick={() => removeFile(i)} aria-label="Remove file">✕</button>
+                <Button type="button" className="file-remove" onClick={() => removeFile(i)} aria-label={`Remove ${f.name}`} title={`Remove ${f.name}`}>✕</Button>
               </div>
             ))}
             <div className="file-total">{files.length} file{files.length > 1 ? 's' : ''} · {totalKB.toFixed(0)} KB total</div>
           </div>
         )}
 
-        {error && <div className="alert">{error}</div>}
+        {error && <div className="alert" role="alert">{error}</div>}
 
-        <button className="cta" type="button" onClick={onScreen} disabled={files.length === 0}>
+        <Button className="cta" type="button" onClick={onScreen} disabled={files.length === 0}>
           Screen {files.length > 0 ? `${files.length} resume${files.length > 1 ? 's' : ''}` : 'resumes'} →
-        </button>
+        </Button>
         <p className="cta-hint">You will watch each resume being analysed, then get a ranked shortlist.</p>
       </section>
     </div>

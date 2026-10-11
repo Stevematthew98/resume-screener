@@ -1,3 +1,4 @@
+import Button from './Button';
 import React, { useEffect, useState } from 'react';
 import { getDemoCreds, login, signup } from '../api';
 
@@ -77,7 +78,7 @@ export default function Login({ onAuth }) {
         <div className="auth-brand-inner">
           <div className="auth-logo">
             <span className="auth-logo-mark">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                 <path d="M14 2v6h6" /><path d="M9 13h6" /><path d="M9 17h6" />
               </svg>
@@ -111,11 +112,11 @@ export default function Login({ onAuth }) {
         </p>
 
         {demo && (
-          <button type="button" className="demo-box" onClick={fillDemo} title="Fill in the demo credentials">
+          <Button type="button" className="demo-box" onClick={fillDemo} title="Fill in the demo credentials">
             <span className="demo-label">DEMO ACCOUNT — click to fill</span>
             <span className="demo-creds">{demo.email} · {demo.password}</span>
             <span className="demo-note">Demo auth for trying the product — not for real accounts.</span>
-          </button>
+          </Button>
         )}
 
         <form onSubmit={submit} className="auth-form">
@@ -137,17 +138,17 @@ export default function Login({ onAuth }) {
               placeholder={mode === 'signup' ? 'At least 6 characters' : 'Your password'}
               autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} required />
           </label>
-          {error && <div className="form-error">{error}</div>}
-          <button type="submit" className="btn-primary btn-block" disabled={busy}>
+          {error && <div className="form-error" role="alert">{error}</div>}
+          <Button type="submit" className="btn-primary btn-block" disabled={busy}>
             {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
-          </button>
+          </Button>
         </form>
 
         <div className="auth-switch">
           {mode === 'login' ? (
-            <>New here? <button type="button" onClick={() => { setMode('signup'); setError(''); }}>Create an account</button></>
+            <>New here? <Button type="button" onClick={() => { setMode('signup'); setError(''); }}>Create an account</Button></>
           ) : (
-            <>Have an account? <button type="button" onClick={() => { setMode('login'); setError(''); }}>Sign in</button></>
+            <>Have an account? <Button type="button" onClick={() => { setMode('login'); setError(''); }}>Sign in</Button></>
           )}
         </div>
       </div>

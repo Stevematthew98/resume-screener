@@ -1,4 +1,6 @@
+import Button from './Button';
 import React from 'react';
+import { Plus, ArrowUpRight } from 'lucide-react';
 import {
   Bar,
   BarChart,
@@ -11,9 +13,9 @@ import {
 } from 'recharts';
 
 const BAND_COLORS = {
-  'Strong match': '#0d9d6c',
-  'Worth reviewing': '#d97706',
-  'Weak match': '#94a3b8',
+  'Strong match': 'var(--green)',
+  'Worth reviewing': 'var(--amber)',
+  'Weak match': 'var(--muted)',
 };
 
 function fmtDate(iso) {
@@ -68,28 +70,27 @@ function InboxIcon() {
   );
 }
 
-export default function Dashboard({ data, onNewScreening, onOpenSession }) {
-  const loading = !data;
+export default function Dashboard({ data, loading = false, error = '', onNewScreening, onOpenSession }) {
   const stats = (data && data.stats) || {};
   const recent = (data && data.recent_sessions) || [];
   const dist = (data && data.score_distribution) || [];
 
   const cards = [
     {
-      label: 'Resumes uploaded', value: stats.total_resumes ?? 0, hint: 'across all screenings',
-      icon: <DocIcon />, color: '#4f46e5', soft: '#eef0ff',
+      label: 'Resumes uploaded', value: stats.total_resumes ?? '—', hint: 'across all screenings',
+      icon: <DocIcon />, tone: 'primary',
     },
     {
-      label: 'Candidates processed', value: stats.candidates_processed ?? 0, hint: 'analysed by the NLP pipeline',
-      icon: <UsersIcon />, color: '#0284c7', soft: '#e0f2fe',
+      label: 'Candidates processed', value: stats.candidates_processed ?? '—', hint: 'analysed by the NLP pipeline',
+      icon: <UsersIcon />, tone: 'info',
     },
     {
-      label: 'Shortlisted', value: stats.shortlisted ?? 0, hint: 'moved by you to shortlist',
-      icon: <StarIcon />, color: '#0d9d6c', soft: '#dbf5e8',
+      label: 'Shortlisted', value: stats.shortlisted ?? '—', hint: 'moved by you to shortlist',
+      icon: <StarIcon />, tone: 'success',
     },
     {
-      label: 'Average match score', value: `${Math.round((stats.avg_score || 0) * 100)}%`, hint: 'across all candidates',
-      icon: <GaugeIcon />, color: '#d97706', soft: '#fdf1dc',
+      label: 'Average match score', value: stats.avg_score != null ? `${Math.round(stats.avg_score * 100)}%` : '—', hint: 'across all candidates',
+      icon: <GaugeIcon />, tone: 'warning',
     },
   ];
 
@@ -97,12 +98,12 @@ export default function Dashboard({ data, onNewScreening, onOpenSession }) {
     <div className="dash">
       <div className="dash-head rise">
         <div>
-          <h2>Recruiter dashboard</h2>
-          <p>Your screening activity at a glance. Scores are similarity assessments — you decide.</p>
+          <h2>Dashboard</h2>
+          <p>A clear view of your recruitment activity.</p>
         </div>
-        <button type="button" className="btn-primary" onClick={onNewScreening}>
-          Start new screening →
-        </button>
+        <Button type="button" className="btn-primary" onClick={onNewScreening}>
+          <Plus size={16} /> New screening
+        </Button>
       </div>
 
       <div className="stat-grid">
@@ -117,8 +118,7 @@ export default function Dashboard({ data, onNewScreening, onOpenSession }) {
             </div>
           ))
           : cards.map((c, i) => (
-            <div className="stat-card rise" key={c.label}
-              style={{ '--d': `${i * 70}ms`, '--sc': c.color, '--sc-soft': c.soft }}>
+            <div className={`stat-card rise stat-${c.tone}`} key={c.label}>
               <div className="stat-top">
                 <span className="stat-icon">{c.icon}</span>
               </div>
@@ -135,7 +135,7 @@ export default function Dashboard({ data, onNewScreening, onOpenSession }) {
           <p className="panel-sub">How your candidates fall across verdict bands.</p>
           {loading ? (
             <div className="skeleton" style={{ height: 240, borderRadius: 12 }}>&nbsp;</div>
-          ) : dist.every((d) => !d.count) ? (
+          ) : error ? <div className="empty-note">Score distribution is currently unavailable.</div> : dist.every((d) => !d.count) ? (
             <div className="empty-note">
               <div className="empty-ico"><GaugeIcon /></div>
               No candidates yet — run your first screening to see the distribution.
@@ -143,28 +143,22 @@ export default function Dashboard({ data, onNewScreening, onOpenSession }) {
           ) : (
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={dist} margin={{ top: 10, right: 10, left: -8, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e9eef7" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#5d6c8f' }} interval={0}
-                  tickLine={false} axisLine={{ stroke: '#e4e9f4' }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#5d6c8f' }}
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 12, fill: 'var(--muted)' }} interval={0}
+                  tickLine={false} axisLine={{ stroke: 'var(--line)' }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'var(--muted)' }}
                   tickLine={false} axisLine={false} width={30} />
-                <Tooltip
-                  cursor={{ fill: 'rgba(79,70,229,.06)' }}
-                  contentStyle={{
-                    borderRadius: 12, border: '1px solid #e4e9f4',
-                    boxShadow: '0 12px 28px -8px rgba(15,26,51,.18)',
-                    fontSize: 13, fontWeight: 600,
-                  }}
-                />
-                <Bar dataKey="count" radius={[8, 8, 0, 0]} barSize={52}
-                  background={{ fill: '#f1f4fa', radius: 8 }}>
+                <Tooltip cursor={{ fill: 'var(--accent-soft)' }} content={({ active, payload }) => active && payload?.length ? <div className="chart-tooltip"><strong>{payload[0].payload.label}</strong>{payload[0].value} candidates</div> : null} />
+                <Bar dataKey="count" name="Candidates" radius={[4, 4, 0, 0]} barSize={52}
+                  background={{ fill: 'var(--line)', radius: 8 }}>
                   {dist.map((d) => (
-                    <Cell key={d.label} fill={BAND_COLORS[d.label] || '#7c8db0'} />
+                    <Cell key={d.label} fill={BAND_COLORS[d.label] || 'var(--muted)'} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           )}
+          {!loading && !error && dist.some(d => d.count) && <div className="chart-legend">{dist.map(d => <span key={d.label}><i style={{ background: BAND_COLORS[d.label] || 'var(--muted)' }} />{d.label}</span>)}</div>}
         </div>
 
         <div className="dash-panel rise" style={{ '--d': '210ms' }}>
@@ -176,7 +170,7 @@ export default function Dashboard({ data, onNewScreening, onOpenSession }) {
                 <div key={i} className="skeleton" style={{ height: 62, borderRadius: 12 }}>&nbsp;</div>
               ))}
             </div>
-          ) : recent.length === 0 ? (
+          ) : error ? <div className="empty-note">Recent sessions are currently unavailable.</div> : recent.length === 0 ? (
             <div className="empty-note">
               <div className="empty-ico"><InboxIcon /></div>
               No screening sessions yet — your recent batches will appear here.
@@ -185,7 +179,7 @@ export default function Dashboard({ data, onNewScreening, onOpenSession }) {
             <ul className="session-list">
               {recent.map((s) => (
                 <li key={s.id}>
-                  <button type="button" className="session-row" onClick={() => onOpenSession(s.id)}>
+                  <Button type="button" className="session-row" onClick={() => onOpenSession(s.id)}>
                     <span className="session-main">
                       <strong>{s.job_title || 'Untitled role'}</strong>
                       {s.job_company && <span className="muted"> · {s.job_company}</span>}
@@ -194,7 +188,7 @@ export default function Dashboard({ data, onNewScreening, onOpenSession }) {
                       {s.screened_count}/{s.total_resumes} screened · avg {Math.round((s.avg_score || 0) * 100)}%
                     </span>
                     <span className="session-date">{fmtDate(s.created_at)}</span>
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>
