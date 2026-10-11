@@ -99,6 +99,15 @@ body::after {
 
 #root { position: relative; z-index: 1; }
 
+/* Interactive particle-network backdrop (see components/Backdrop.jsx) */
+.backdrop-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.app-shell, .page { position: relative; z-index: 1; }
+
 ::selection { background: rgba(83, 109, 254, 0.18); color: #202633; }
 
 /* --- Typography --------------------------------------------------------- */

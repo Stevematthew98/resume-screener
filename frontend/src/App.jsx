@@ -17,7 +17,7 @@ import {
   streamScreen,
 } from './api';
 import Dashboard from './components/Dashboard';
-import HistoryView from './components/HistoryView';
+import Backdrop from './components/Backdrop';import HistoryView from './components/HistoryView';
 import JobsView from './components/JobsView';
 import JobSetup from './components/JobSetup';
 import Login from './components/Login';
@@ -322,6 +322,7 @@ export default function App() {
   if (!user) {
     return (
       <div className="page">
+        <Backdrop />
         <Login onAuth={(u) => { setUser(u); setView('dashboard'); }} />
       </div>
     );
@@ -335,6 +336,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <Backdrop />
       <a className="skip-link" href="#workspace-content">Skip to content</a>
       {navOpen && <Button className="nav-scrim" aria-label="Close navigation" onClick={() => setNavOpen(false)} />}
       <aside className={`app-sidebar ${navOpen ? 'is-open' : ''}`}>
