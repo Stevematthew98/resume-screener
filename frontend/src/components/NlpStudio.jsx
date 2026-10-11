@@ -38,6 +38,7 @@ export default function NlpStudio({
   const [walkN, setWalkN] = useState(null); // paced guided walk: 1..20 while the live run is presented stage-by-stage
   const [now, setNow] = useState(Date.now());
   const walkResumeKey = useRef(null);
+  const batchDoneAt = useRef(null); // captured once when the batch completes
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -52,7 +53,13 @@ export default function NlpStudio({
     setShowSummary(true);
     setWalkN(1);
     walkResumeKey.current = null;
+    batchDoneAt.current = null;
   }, [startedAt]);
+
+  // Capture the batch completion timestamp once (not the ticking clock).
+  useEffect(() => {
+    if (batchComplete && batchDoneAt.current == null) batchDoneAt.current = Date.now();
+  }, [batchComplete]);
 
   // Guided replay: walk the RECORDED stages, ~3s each ≈ 60 seconds total.
   // All data shown is from this run's real outputs — clearly labeled as replay.
@@ -78,7 +85,7 @@ export default function NlpStudio({
   }
   exec.__batch__ = {
     status: batchComplete ? 'done' : (selected && selected.status === 'done' ? 'active' : 'pending'),
-    completedAt: batchComplete ? now : null, detail: null,
+    completedAt: batchComplete ? batchDoneAt.current : null, detail: null,
   };
 
   // Real per-stage durations from completion timestamps.
@@ -114,16 +121,33 @@ export default function NlpStudio({
   // Guided walk director: one stage at a time, ~3 seconds each (≈60s total).
   // A stage is only marked done once its REAL backend output is recorded —
   // if the backend is slower than the walk, we wait honestly instead of faking.
+  //
+  // Timing design (two hard-won lessons):
+  //  - `now` ticks every second, and every SSE event gives `selected` a new
+  //    reference — neither may own the advance timer, or it gets cancelled
+  //    forever / restarted on every backend event. So a steady 500ms interval
+  //    checks progress, and the per-stage 3s viewing window lives in a ref
+  //    that only resets when the walk actually moves to the next stage.
+  const walkStageStart = useRef(null);
   useEffect(() => {
-    if (walkN == null) return;
-    if (failed) { setWalkN(null); return; }
-    if (walkN > 20) { setWalkN(null); return; }
-    const stage = STAGES_ENRICHED[walkN - 1];
-    if (!stageReady(stage.execKey)) return; // re-checked every second via `now`
-    const t = setTimeout(() => setWalkN(walkN + 1), 3000);
-    return () => clearTimeout(t);
+    walkStageStart.current = null;
+    if (walkN != null && walkN > 20) setWalkN(null); // walk finished → hand over to summary
+  }, [walkN]);
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (walkN == null || walkN > 20) return;
+      if (failed) { setWalkN(null); return; }
+      const stage = STAGES_ENRICHED[walkN - 1];
+      if (!stageReady(stage.execKey)) { walkStageStart.current = null; return; }
+      if (walkStageStart.current == null) walkStageStart.current = Date.now();
+      if (Date.now() - walkStageStart.current >= 3000) {
+        walkStageStart.current = null;
+        setWalkN((n) => (n == null || n > 20 ? null : n + 1));
+      }
+    }, 500);
+    return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [walkN, now, selected, batchComplete, startedAt]);
+  }, [walkN, selected, batchComplete, startedAt, failed]);
 
   // Auto-follow the live stage unless the user pinned one.
   let autoStage = 1;
