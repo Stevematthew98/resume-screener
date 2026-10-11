@@ -857,6 +857,17 @@ textarea { resize: vertical; min-height: 90px; }
 .code-line { display: flex; min-width: max-content; padding: 0 16px; }
 .code-ln { width: 34px; flex-shrink: 0; text-align: right; margin-right: 14px; color: #5B6478; user-select: none; }
 
+/* code block in focus during the guided walk */
+.code-explorer.live { border-color: rgba(83, 109, 254, 0.55); box-shadow: 0 0 0 3px rgba(83, 109, 254, 0.12); }
+.live-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: #4253E8; background: rgba(83, 109, 254, 0.12);
+  padding: 3px 10px; border-radius: 99px; white-space: nowrap;
+}
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: #536DFE; animation: pulse-dot 1.2s ease-in-out infinite; }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.8); } }
+
 /* ---- Studio replay ---- */
 .studio-replay { border-color: rgba(83, 109, 254, 0.35); }
 .replay-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 10px; }

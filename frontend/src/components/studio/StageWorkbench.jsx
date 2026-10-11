@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Check, ChevronDown, Copy } from 'lucide-react';
 
 const TABS = ['Overview', 'Input / Output', 'Visualization', 'Python Code', 'Technical Details'];
@@ -122,10 +122,12 @@ function vic_method(viz) {
 
 /* ---------------- code explorer ---------------- */
 
-function CodeExplorer({ code }) {
+function CodeExplorer({ code, live }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const lines = code.code.split('\n');
+  // During the guided walk the current stage's code is shown expanded automatically.
+  const expanded = live || open;
   async function copy() {
     try {
       await navigator.clipboard.writeText(code.code);
@@ -134,20 +136,21 @@ function CodeExplorer({ code }) {
     } catch { /* clipboard unavailable */ }
   }
   return (
-    <div className="code-explorer">
-      <button type="button" className="code-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+    <div className={`code-explorer ${live ? 'live' : ''}`}>
+      <button type="button" className="code-head" onClick={() => setOpen(!open)} aria-expanded={expanded}>
         <span className="code-title">{code.title}</span>
+        {live && <span className="live-pill"><span className="live-dot" />in focus</span>}
         <span className={`code-src ${/illustrative/i.test(code.note) ? 'demo' : 'real'}`}>
           {/illustrative/i.test(code.note) ? 'illustrative' : 'actual backend'}
         </span>
-        <ChevronDown size={16} className={`chev ${open ? 'open' : ''}`} />
+        <ChevronDown size={16} className={`chev ${expanded ? 'open' : ''}`} />
       </button>
       <div className="code-meta">
         <span><strong>Library:</strong> {code.library}</span>
         <span><strong>Algorithm:</strong> {code.algorithm}</span>
       </div>
       <p className="hint code-note">{code.note}</p>
-      {open && (
+      {expanded && (
         <div className="code-body">
           <button type="button" className="code-copy" onClick={copy} title="Copy code">
             {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied' : 'Copy'}
@@ -183,8 +186,15 @@ function IoBox({ title, rows, text }) {
   );
 }
 
-export default function StageWorkbench({ stage, execStatus, durationMs, detail, ctx }) {
+export default function StageWorkbench({ stage, execStatus, durationMs, detail, ctx, showCodeLive }) {
   const [tab, setTab] = useState('Overview');
+  const stageN = stage ? stage.n : null;
+  // During the guided walk, each stage's working is shown with its code block:
+  // when a new stage comes into focus, switch to its Python Code tab automatically.
+  // The user can still pick any tab freely mid-stage — we only auto-switch on stage change.
+  useEffect(() => {
+    if (showCodeLive && stageN != null) setTab('Python Code');
+  }, [stageN, showCodeLive]);
   if (!stage) {
     return (
       <div className="workbench empty">
@@ -242,7 +252,7 @@ export default function StageWorkbench({ stage, execStatus, durationMs, detail, 
 
         {tab === 'Visualization' && <Viz viz={viz} />}
 
-        {tab === 'Python Code' && <CodeExplorer code={stage.code} />}
+        {tab === 'Python Code' && <CodeExplorer code={stage.code} live={!!showCodeLive} />}
 
         {tab === 'Technical Details' && (
           <ul className="viz-list">

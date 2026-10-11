@@ -167,6 +167,9 @@ export default function NlpStudio({
       }
     }
   }
+  // During the guided walk (not replay, not a pinned stage), the workbench
+  // auto-shows the code block of whichever stage is currently in focus.
+  const walkFocus = walkN != null && replayN == null && pinnedStage == null;
   const selStageN = replayN || pinnedStage || walkN || autoStage;
   const stage = STAGES_ENRICHED.find((s) => s.n === selStageN) || STAGES_ENRICHED[0];
   const stageExec = exec[stage.execKey] || { status: 'pending' };
@@ -373,6 +376,7 @@ export default function NlpStudio({
             durationMs={(!stage.sub || stage.firstOfExec) ? durations[stage.execKey] : null}
             detail={(exec[stage.execKey] || {}).detail}
             ctx={ctx}
+            showCodeLive={walkFocus && stage.n === walkN}
           />
         </section>
       </div>
