@@ -9,7 +9,7 @@
  * execKey '__batch__' = batch-level (ranking), resolved from batch_complete.
  */
 
-import { STAGE_LABELS } from '../api';
+import { STAGE_LABELS } from '../../api';
 
 export const GROUPS = [
   'Document Processing',
