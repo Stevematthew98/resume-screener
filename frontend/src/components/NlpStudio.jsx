@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Button from './Button';
 import StageWorkbench from './studio/StageWorkbench';
 import { GROUPS, STAGES_ENRICHED } from './studio/studioStages';
@@ -35,19 +35,23 @@ export default function NlpStudio({
   const [pinnedStage, setPinnedStage] = useState(null);
   const [showSummary, setShowSummary] = useState(true);
   const [replayN, setReplayN] = useState(null); // null = not replaying; else stage number 1..20
+  const [walkN, setWalkN] = useState(null); // paced guided walk: 1..20 while the live run is presented stage-by-stage
   const [now, setNow] = useState(Date.now());
+  const walkResumeKey = useRef(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // New run → reset studio UI state.
+  // New run → reset studio UI state and start the guided walk at stage 1.
   useEffect(() => {
     setReplayN(null);
     setPinnedStage(null);
     setSelResumeKey(null);
     setShowSummary(true);
+    setWalkN(1);
+    walkResumeKey.current = null;
   }, [startedAt]);
 
   // Guided replay: walk the RECORDED stages, ~3s each ≈ 60 seconds total.
@@ -88,6 +92,39 @@ export default function NlpStudio({
 
   const failed = selected && selected.status === 'error';
 
+  // Is this studio stage's real backend data recorded for the selected resume?
+  function stageReady(execKey) {
+    if (execKey === '__batch__') return batchComplete;
+    if (!selected) return false;
+    if (selected.status === 'done') return true;
+    const e = exec[execKey];
+    return !!(e && e.status === 'done');
+  }
+
+  // A new resume starting mid-batch restarts the guided walk for it.
+  useEffect(() => {
+    if (!running) return;
+    if (walkResumeKey.current !== running.key) {
+      walkResumeKey.current = running.key;
+      setWalkN(1);
+      setPinnedStage(null);
+    }
+  }, [running]);
+
+  // Guided walk director: one stage at a time, ~3 seconds each (≈60s total).
+  // A stage is only marked done once its REAL backend output is recorded —
+  // if the backend is slower than the walk, we wait honestly instead of faking.
+  useEffect(() => {
+    if (walkN == null) return;
+    if (failed) { setWalkN(null); return; }
+    if (walkN > 20) { setWalkN(null); return; }
+    const stage = STAGES_ENRICHED[walkN - 1];
+    if (!stageReady(stage.execKey)) return; // re-checked every second via `now`
+    const t = setTimeout(() => setWalkN(walkN + 1), 3000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walkN, now, selected, batchComplete, startedAt]);
+
   // Auto-follow the live stage unless the user pinned one.
   let autoStage = 1;
   if (selected) {
@@ -103,10 +140,21 @@ export default function NlpStudio({
       }
     }
   }
-  const selStageN = replayN || pinnedStage || autoStage;
+  const selStageN = replayN || pinnedStage || walkN || autoStage;
   const stage = STAGES_ENRICHED.find((s) => s.n === selStageN) || STAGES_ENRICHED[0];
   const stageExec = exec[stage.execKey] || { status: 'pending' };
-  const specStatus = failed ? 'failed' : toSpec(stageExec.status);
+  // Walk-aware status: during the guided walk the workbench reflects the stage
+  // being presented — its real backend data is always recorded before it is
+  // marked done, so "processing" here means "currently being shown in detail".
+  const specStatus = (() => {
+    if (failed) return 'failed';
+    if (walkN != null && replayN == null) {
+      if (stage.n < walkN) return 'completed';
+      if (stage.n === walkN) return 'processing';
+      return 'waiting';
+    }
+    return toSpec(stageExec.status);
+  })();
 
   const candidate = selected && selected.resume_id ? candidates[selected.resume_id] : null;
   const rankIdx = selected && ranking ? ranking.findIndex((r) => r.resume_id === selected.resume_id) : -1;
@@ -117,13 +165,17 @@ export default function NlpStudio({
   };
 
   // Progress header numbers.
-  const pct = total ? Math.round((doneCount / total) * 100) : 0;
+  const walking = walkN != null;
+  const pct = walking ? Math.round(((walkN - 1) / 20) * 100) : total ? Math.round((doneCount / total) * 100) : 0;
   const elapsed = startedAt ? now - startedAt : 0;
   const rate = elapsed > 0 && doneCount > 0 ? doneCount / elapsed : 0;
   const eta = rate > 0 && doneCount < total ? Math.round((total - doneCount) / rate) : null;
-  const activeLabel = running
-    ? (running.stages.find((s) => s.status === 'active') || {}).label || 'Working…'
-    : batchComplete ? 'Complete' : 'Starting…';
+  const walkEta = walking ? (21 - walkN) * 3000 : null; // ≈3s per remaining stage
+  const activeLabel = walking
+    ? `Stage ${walkN} of 20 · ${STAGES_ENRICHED[walkN - 1].name}`
+    : running
+      ? (running.stages.find((s) => s.status === 'active') || {}).label || 'Working…'
+      : batchComplete ? 'Complete' : 'Starting…';
 
   const summaryStats = (() => {
     if (!batchComplete) return null;
@@ -151,7 +203,7 @@ export default function NlpStudio({
           <div className="studio-metrics">
             <div className="studio-metric"><span className="sm-k">Progress</span><span className="sm-v mono">{pct}%</span></div>
             <div className="studio-metric"><span className="sm-k">Elapsed</span><span className="sm-v mono">{fmtClock(elapsed)}</span></div>
-            <div className="studio-metric"><span className="sm-k">Remaining</span><span className="sm-v mono">{eta != null ? `~${fmtClock(eta)}` : '—'}</span></div>
+            <div className="studio-metric"><span className="sm-k">Remaining</span><span className="sm-v mono">{walking ? `~${fmtClock(walkEta)}` : eta != null ? `~${fmtClock(eta)}` : '—'}</span></div>
             <div className="studio-metric"><span className="sm-k">Stage</span><span className="sm-v">{activeLabel}</span></div>
           </div>
         </div>
@@ -160,13 +212,13 @@ export default function NlpStudio({
         </div>
         <div className="progress-meta">
           <span>{doneCount} of {total} resumes screened{currentFile ? <> · now reading <strong>{currentFile}</strong></> : ''}</span>
-          <span>{batchComplete ? 'Complete' : 'Processing…'}</span>
+          <span>{walking ? `Guided walk · stage ${walkN} of 20` : batchComplete ? 'Complete' : 'Processing…'}</span>
         </div>
         {error && <div className="alert" role="alert">{error}</div>}
       </section>
 
-      {/* ---------- completion summary ---------- */}
-      {batchComplete && showSummary && summaryStats && (
+      {/* ---------- completion summary (after the guided walk finishes) ---------- */}
+      {batchComplete && walkN == null && showSummary && summaryStats && (
         <section className="card rise studio-done" style={{ '--d': '60ms' }}>
           <div className="card-eyebrow">Complete</div>
           <h2>NLP Analysis Complete</h2>
@@ -231,7 +283,17 @@ export default function NlpStudio({
                 <div className="pipe-list">
                   {STAGES_ENRICHED.filter((s) => s.group === gi).map((s, idx, arr) => {
                     const e = exec[s.execKey] || { status: 'pending' };
-                    const st = failed ? 'failed' : toSpec(e.status);
+                    // During the guided walk the left rail shows the presented
+                    // state: done = real output recorded, current = in focus.
+                    const st = (() => {
+                      if (failed) return 'failed';
+                      if (walkN != null && replayN == null) {
+                        if (s.n < walkN) return 'completed';
+                        if (s.n === walkN) return 'processing';
+                        return 'waiting';
+                      }
+                      return toSpec(e.status);
+                    })();
                     const Icon = ICONS[s.icon] || FileText;
                     const isSel = s.n === selStageN;
                     return (
